@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using Raven.ManagedStorage.DataRecords;
 
 namespace Raven.ManagedStorage
@@ -120,7 +121,7 @@ namespace Raven.ManagedStorage
                                                     putRecord.Position,
                                                     putRecord.Length));
 
-                return putRecord.Id > currentLatestId ? putRecord.Id : currentLatestId;
+                return Math.Max(putRecord.Id, currentLatestId);
             }
             
             if (record is RavenDelete)
