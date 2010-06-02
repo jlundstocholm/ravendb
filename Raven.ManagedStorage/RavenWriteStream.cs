@@ -4,12 +4,6 @@ using Raven.ManagedStorage.DataRecords;
 
 namespace Raven.ManagedStorage
 {
-    public enum WriterOptions
-    {
-        Buffered,
-        NonBuffered
-    }
-
     public class RavenWriteStream : IDisposable
     {
         private readonly FileStream _fileStream;
