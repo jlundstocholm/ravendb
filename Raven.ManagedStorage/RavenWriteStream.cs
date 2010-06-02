@@ -4,14 +4,20 @@ using Raven.ManagedStorage.DataRecords;
 
 namespace Raven.ManagedStorage
 {
+    public enum WriterOptions
+    {
+        Buffered,
+        NonBuffered
+    }
+
     public class RavenWriteStream : IDisposable
     {
         private readonly FileStream _fileStream;
         private readonly RavenWriter _writer;
 
-        public RavenWriteStream(string fileName)
+        public RavenWriteStream(string fileName, WriterOptions options)
         {
-            _fileStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 16, FileOptions.WriteThrough);
+            _fileStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 16, options == WriterOptions.NonBuffered ? FileOptions.WriteThrough : FileOptions.None);
             _writer = new RavenWriter(_fileStream);
         }
 
@@ -23,6 +29,11 @@ namespace Raven.ManagedStorage
         public bool EndOfFile
         {
             get { return Position >= _fileStream.Length; }
+        }
+
+        public long Length
+        {
+            get { return _fileStream.Length; }
         }
 
         public void Dispose()
@@ -76,6 +87,11 @@ namespace Raven.ManagedStorage
         public void Seek(long position, SeekOrigin origin)
         {
             _fileStream.Seek(position, origin);
+        }
+
+        public void Truncate(long lastGoodPosition)
+        {
+            _fileStream.SetLength(lastGoodPosition);
         }
     }
 }

@@ -46,7 +46,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="DocumentStorage.cs" />
+    <Compile Include="ManagedStorageTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

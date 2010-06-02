@@ -9,6 +9,7 @@ namespace Raven.ManagedStorage.DataRecords
         Checkpoint = 0x2,
         IndexPut = 0x4,
         Delete = 0x8,
-        IndexDelete = 0x10
+        IndexDelete = 0x10,
+        Invalidated = 0x20
     }
 }

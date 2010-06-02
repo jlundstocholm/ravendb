@@ -4,14 +4,20 @@ using Raven.ManagedStorage.DataRecords;
 
 namespace Raven.ManagedStorage
 {
+    public enum ReaderOptions
+    {
+        RandomAccess,
+        Sequential
+    }
+
     public class RavenReadStream : IDisposable
     {
         private readonly FileStream _fileStream;
         private readonly RavenReader _reader;
 
-        public RavenReadStream(string fileName)
+        public RavenReadStream(string fileName, ReaderOptions options)
         {
-            _fileStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite, 16, FileOptions.RandomAccess);
+            _fileStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite, 16, options == ReaderOptions.RandomAccess ? FileOptions.RandomAccess : FileOptions.SequentialScan);
             _reader = new RavenReader(_fileStream);
         }
 
@@ -40,16 +46,24 @@ namespace Raven.ManagedStorage
 
         public RavenRecord ReadRecord(RecordType type)
         {
-            var recordType = ReadRecordType();
-            var recordLength = ReadInt32();
-
-            if ((recordType & type) != 0)
+            var position = _fileStream.Position;
+            try
             {
-                return ReadCurrentRecord(recordType, recordLength);
+                var recordType = ReadRecordType();
+                var recordLength = ReadInt32();
+
+                if ((recordType & type) != 0)
+                {
+                    return ReadCurrentRecord(recordType, recordLength);
+                }
+
+                SkipCurrentRecord(recordLength);
+                return null;
             }
-            
-            SkipCurrentRecord(recordLength);
-            return null;
+            catch (EndOfStreamException)
+            {
+                throw new FileCorruptedException(position);
+            }
         }
 
         private void SkipCurrentRecord(int recordLength)
@@ -96,7 +110,12 @@ namespace Raven.ManagedStorage
 
         public void Read(byte[] buffer, int length)
         {
-            _reader.Read(buffer, 0, length);
+            var bytes = _reader.Read(buffer, 0, length);
+
+            if (bytes < length)
+            {
+                throw new EndOfStreamException();
+            }
         }
 
         public int ReadInt32()

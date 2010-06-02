@@ -3,7 +3,6 @@ using System.IO;
 
 namespace Raven.ManagedStorage
 {
-    // TODO - this code sucks.  Either switch to mimic RavenPut etc, or update to protocol buffers
     public class ControlFile : IDisposable
     {
         private const string ControlFileName = "control.raven";
@@ -15,11 +14,14 @@ namespace Raven.ManagedStorage
         public ControlFile(string dataPath)
         {
             _dataPath = dataPath;
+            IsValid = true;
             OpenFile();
         }
 
         public long LastCheckpointPosition { get; private set; }
-        public long LatestId { get; private set; }
+        public long LatestId { get; set; }
+
+        public bool IsValid { get; private set; }
 
         public void Dispose()
         {
@@ -35,8 +37,14 @@ namespace Raven.ManagedStorage
 
         private void OpenFile()
         {
-            _fileStream = File.Open(Path.Combine(_dataPath, ControlFileName), FileMode.OpenOrCreate,
-                                    FileAccess.ReadWrite, FileShare.None);
+            var path = Path.Combine(_dataPath, ControlFileName);
+
+            if (!File.Exists(path))
+            {
+                IsValid = false;
+            }
+
+            _fileStream = File.Open(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 
             var buffer = new byte[sizeof(long) + sizeof(long) + Checksum.ChecksumLength];
             _fileStream.Read(buffer, 0, buffer.Length);
@@ -48,17 +56,16 @@ namespace Raven.ManagedStorage
             }
             else
             {
-                LastCheckpointPosition = 0;
-                UpdateControlFile(0, 0);
+                Reset();
             }
         }
 
-        public void UpdateControlFile(long position, long nextId)
+        public void UpdateControlFile(long position)
         {
             lock (_lockObject)
             {
                 var positionBytes = BitConverter.GetBytes(position);
-                var idBytes = BitConverter.GetBytes(nextId);
+                var idBytes = BitConverter.GetBytes(LatestId);
 
                 var checkpointBytes = new byte[16];
                 Array.Copy(positionBytes, checkpointBytes, sizeof(long));
@@ -70,7 +77,17 @@ namespace Raven.ManagedStorage
                 _fileStream.Write(checkSum, 0, checkSum.Length);
                 _fileStream.Write(checkpointBytes, 0, checkpointBytes.Length);
                 _fileStream.Flush();
+
+                IsValid = true;
             }
+        }
+
+        public void Reset()
+        {
+            LastCheckpointPosition = 0;
+            LatestId = 0;
+            UpdateControlFile(0);
+            IsValid = false;
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Linq;
 using Raven.ManagedStorage.DataRecords;
 
 namespace Raven.ManagedStorage
@@ -9,24 +10,54 @@ namespace Raven.ManagedStorage
     {
         private const string IndexStoreName = "index.raven";
 
-        private readonly RavenFileStore _fileStore;
+        private readonly ConcurrentDictionary<string, FileStoreMetaData> _keyIndex = new ConcurrentDictionary<string, FileStoreMetaData>();
+        private readonly ConcurrentDictionary<long, FileStoreMetaData> _idIndex = new ConcurrentDictionary<long, FileStoreMetaData>();
+        private RavenWriteStream _writeStream;
+        private readonly string _path;
 
-        private readonly ConcurrentDictionary<string, FileStoreMetaData> _keyIndex =
-            new ConcurrentDictionary<string, FileStoreMetaData>();
-
-        private readonly ConcurrentDictionary<long, FileStoreMetaData> _idIndex =
-            new ConcurrentDictionary<long, FileStoreMetaData>();
-
-        private readonly RavenWriteStream _writeStream;
-
-        public RavenFileStoreIndex(RavenFileStore fileStore)
+        public RavenFileStoreIndex(string dataPath)
         {
-            _fileStore = fileStore;
+            try
+            {
+                IsValid = true;
+                _path = Path.Combine(dataPath, IndexStoreName);
 
-            _writeStream = new RavenWriteStream(Path.Combine(_fileStore.DataPath, IndexStoreName));
+                OpenFiles();
+            }
+            catch (Exception)
+            {
+                Dispose();
+                throw;
+            }
+        }
+
+        private void OpenFiles()
+        {
+            if (!File.Exists(_path))
+            {
+                IsValid = false;
+            }
+
+            _writeStream = new RavenWriteStream(_path, WriterOptions.Buffered);
             _writeStream.Seek(0, SeekOrigin.End);
+        }
 
-            Populate();
+        public void ProcessRecoveryData(RavenRecord record)
+        {
+            if (record is RavenPut)
+            {
+                var putRecord = (RavenPut)record;
+
+                UpdateIndex(new FileStoreMetaData(putRecord.Document.Key, putRecord.Id,
+                                                    putRecord.Position,
+                                                    putRecord.Length));
+            }
+            else if (record is RavenDelete)
+            {
+                var del = (RavenDelete)record;
+
+                RemoveFromIndex(del.Key);
+            }
         }
 
         public long Position
@@ -34,10 +65,18 @@ namespace Raven.ManagedStorage
             get { return _writeStream.Position; }
         }
 
+        public bool IsValid { get; private set; }
+
         public void Dispose()
         {
-            _writeStream.Dispose();
+            CloseFiles();
+
             GC.SuppressFinalize(this);
+        }
+
+        private void CloseFiles()
+        {
+            if (_writeStream != null) _writeStream.Dispose();
         }
 
         ~RavenFileStoreIndex()
@@ -80,22 +119,26 @@ namespace Raven.ManagedStorage
             return _idIndex.TryGetValue(id, out info) ? info : null;
         }
 
-        private void Populate()
+        public void Populate()
         {
             // Spin through the index file
-            using (var readStream = new RavenReadStream(Path.Combine(_fileStore.DataPath, IndexStoreName)))
+            try
             {
-                while (!readStream.EndOfFile)
+                using (var readStream = new RavenReadStream(_path, ReaderOptions.Sequential))
                 {
-                    RavenRecord indexRecord = readStream.ReadRecord(RecordType.IndexPut | RecordType.IndexDelete);
-
-                    if (indexRecord != null)
+                    while (!readStream.EndOfFile)
                     {
+                        var indexRecord = readStream.ReadRecord(RecordType.IndexPut | RecordType.IndexDelete);
+
+                        if (indexRecord == null) continue;
+
                         if (indexRecord is RavenIndexPut)
                         {
                             // TODO - FileStoreMetaData pretty much the same as RavenIndexPut - can reuse and save an alloc?
                             var put = (RavenIndexPut) indexRecord;
-                            var info = new FileStoreMetaData(put.Key, put.Id, put.DataPosition, put.DataLength);
+
+                            var info = new FileStoreMetaData(put.Key, put.Id, put.DataPosition, put.DataLength)
+                                           {IndexPosition = put.Position};
 
                             _keyIndex.AddOrUpdate(put.Key, info, (existingKey, existingValue) => info);
                             _idIndex.AddOrUpdate(put.Id, info, (existingKey, existingValue) => info);
@@ -108,23 +151,53 @@ namespace Raven.ManagedStorage
                             _keyIndex.TryRemove(del.Key, out doc);
                             _idIndex.TryRemove(del.Id, out doc);
                         }
-                        else
-                        {
-                            throw new NotSupportedException("Unexpected index type");
-                        }
                     }
                 }
             }
+            catch (FileCorruptedException)
+            {
+                // Index file is hosed
+                Reset();
+            }
+        }
+
+        private void InvalidateRecord(long indexPosition)
+        {
+            _writeStream.Seek(indexPosition, SeekOrigin.Begin);
+            _writeStream.Write(RecordType.Invalidated);
+            _writeStream.Seek(0, SeekOrigin.End);
         }
 
         private void WriteToIndex(FileStoreMetaData docInfo)
         {
-            RavenIndexPut.Write(docInfo.Key, docInfo.Id, docInfo.Position, docInfo.Length, _writeStream);
+            docInfo.IndexPosition = _writeStream.Position;
+            RavenIndexPut.Write(docInfo.Key, docInfo.Id, docInfo.DataPosition, docInfo.Length, _writeStream);
         }
 
         public void Flush()
         {
             _writeStream.Flush();
+        }
+
+        public void Reset()
+        {
+            CloseFiles();
+            File.Delete(_path);
+            OpenFiles();
+            IsValid = false;
+        }
+
+        public void InvalidateRecordsPointingBeyond(long lastGoodPosition)
+        {
+            foreach (var key in _keyIndex.Where(key => key.Value.DataPosition >= lastGoodPosition))
+            {
+                FileStoreMetaData value;
+
+                _keyIndex.TryRemove(key.Key, out value);
+                _idIndex.TryRemove(key.Value.Id, out value);
+
+                InvalidateRecord(key.Value.IndexPosition);
+            }
         }
     }
 }

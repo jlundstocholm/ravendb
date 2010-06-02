@@ -44,6 +44,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Checksum.cs" />
+    <Compile Include="FileCorruptedException.cs" />
     <Compile Include="RavenDocument.cs" />
     <Compile Include="ControlFile.cs" />
     <Compile Include="FileStoreMetaData.cs" />
@@ -60,10 +61,10 @@
     <Compile Include="DataRecords\RavenRecord.cs" />
     <Compile Include="RavenStorage.cs" />
     <Compile Include="RavenReadStream.cs" />
-    <Compile Include="RavenThreadLocalReadStream.cs" />
     <Compile Include="RavenWriter.cs" />
     <Compile Include="DataRecords\RecordType.cs" />
     <Compile Include="RavenWriteStream.cs" />
+    <Compile Include="RecoveryProcessor.cs" />
     <Compile Include="StorageSerializer.cs" />
   </ItemGroup>
   <ItemGroup>

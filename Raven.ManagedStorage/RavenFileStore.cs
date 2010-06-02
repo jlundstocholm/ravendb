@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -13,51 +13,51 @@ namespace Raven.ManagedStorage
     {
         private const string DataStoreName = "data.raven";
         private const int CheckpointThreshold = 100;
-        private readonly RavenFileStoreIndex _index;
 
         private readonly object _lockObject = new object();
 
+        private RavenFileStoreIndex _index;
         private ControlFile _controlFile;
-        private string _dataFilePath;
+        private readonly string _dataFilePath;
+        private readonly string _dataDirectory;
         private RavenWriteStream _writeStream;
-
-        [ThreadStatic]
-        private static RavenThreadLocalReadStream _readStream;
+        private readonly ConcurrentQueue<RavenReadStream> _readStreams = new ConcurrentQueue<RavenReadStream>();
 
         private int _writesSinceLastCheckpoint;
-        private long _latestId;
-        private readonly List<RavenThreadLocalReadStream> _readStreams = new List<RavenThreadLocalReadStream>();
 
         public RavenFileStore(string dataPath)
         {
-            DataPath = dataPath;
-            _dataFilePath = Path.Combine(DataPath, DataStoreName);
+            try
+            {
+                _dataDirectory = dataPath;
+                _dataFilePath = Path.Combine(_dataDirectory, DataStoreName);
 
-            CreateDataDirectory(dataPath);
+                CreateDataDirectory(dataPath);
 
-            OpenDataFiles();
+                OpenDataFiles();
 
-            _index = new RavenFileStoreIndex(this);
-
-            PerformRecovery();
+                PerformRecovery();
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
         }
 
-        public string DataPath { get; private set; }
-
-        #region IRavenDataStore Members
 
         public FileStoreMetaData WriteToStore(RavenDocument doc)
         {
             lock (_lockObject)
             {
-                _latestId++;
+                _controlFile.LatestId++;
 
-                long position = _writeStream.Position;
-                int length = RavenPut.Write(_latestId, doc, _writeStream);
+                var position = _writeStream.Position;
+                var length = RavenPut.Write(_controlFile.LatestId, doc, _writeStream);
 
                 _writeStream.Flush();
 
-                var docInfo = new FileStoreMetaData(doc.Key, _latestId, position, length);
+                var docInfo = new FileStoreMetaData(doc.Key, _controlFile.LatestId, position, length);
 
                 _index.UpdateIndex(docInfo);
 
@@ -69,21 +69,18 @@ namespace Raven.ManagedStorage
 
         public JsonDocument GetDocument(string key)
         {
-            OpenReader();
-            FileStoreMetaData info = _index.GetDocumentInfo(key);
+            var info = _index.GetDocumentInfo(key);
 
             if (info == null)
             {
                 return null;
             }
 
-            RavenPut record;
-
-            lock (_lockObject)
-            {
-                _readStream.GetStream(_dataFilePath).Seek(info.Position, SeekOrigin.Begin);
-                record = (RavenPut)_readStream.GetStream(_dataFilePath).ReadRecord(RecordType.Put);
-            }
+            var record = UseReader(readStream =>
+                                       {
+                                           readStream.Seek(info.DataPosition, SeekOrigin.Begin);
+                                           return (RavenPut) readStream.ReadRecord(RecordType.Put);
+                                       });
 
             return new JsonDocument
                        {
@@ -94,18 +91,31 @@ namespace Raven.ManagedStorage
                        };
         }
 
-        private void OpenReader()
+        private T UseReader<T>(Func<RavenReadStream, T> func)
         {
-            if (_readStream == null)
-            {
-                _readStream = new RavenThreadLocalReadStream();
-            }
+            RavenReadStream reader = null;
 
-            if (!_readStream.HasStream(_dataFilePath))
+            try
             {
-                _readStreams.Add(_readStream);
-                _readStream.Open(_dataFilePath);
+                reader = GetReader();
+
+                return func(reader);
             }
+            finally
+            {
+                ReleaseReader(reader);
+            }
+        }
+
+        private RavenReadStream GetReader()
+        {
+            RavenReadStream reader;
+            return _readStreams.TryDequeue(out reader) ? reader : new RavenReadStream(_dataFilePath, ReaderOptions.RandomAccess);
+        }
+
+        private void ReleaseReader(RavenReadStream reader)
+        {
+            _readStreams.Enqueue(reader);
         }
 
         public static void Clear(string dataPath)
@@ -136,110 +146,110 @@ namespace Raven.ManagedStorage
         public Guid? GetETag(string key)
         {
             // TODO - replace with in-memory index lookup
-            JsonDocument doc = GetDocument(key);
+            var doc = GetDocument(key);
 
             return doc != null ? (Guid?)doc.Etag : null;
         }
 
         public void Dispose()
         {
-            foreach (var readStream in _readStreams)
+            if (_readStreams != null)
             {
-                readStream.Close(_dataFilePath);
+                foreach (var readStream in _readStreams)
+                {
+                    readStream.Dispose();
+                }
             }
-            _writeStream.Dispose();
-            _index.Dispose();
-            _controlFile.Dispose();
+
+            if (_writeStream != null) _writeStream.Dispose();
+            if (_index != null) _index.Dispose();
+            if (_controlFile != null) _controlFile.Dispose();
 
             GC.SuppressFinalize(this);
         }
 
-        #endregion
-
         private void PerformRecovery()
         {
-            SeekToLastCheckpoint();
-
-            ProcessNonCheckpointedRecords();
-        }
-
-        private void ProcessNonCheckpointedRecords()
-        {
-            // Spin round every record from now to end of file
-            // and write to the index (if the corresponding index record does not exist)
-            var id = _controlFile.LatestId;
-
-            while (!_readStream.GetStream(_dataFilePath).EndOfFile)
+            using (var readStream = new RavenReadStream(_dataFilePath, ReaderOptions.Sequential))
             {
-                var record = _readStream.GetStream(_dataFilePath).ReadRecord(RecordType.Put | RecordType.Delete);
+                var position = 0L;
 
-                if (record == null) continue;
-
-                if (record is RavenPut)
+                if (!_controlFile.IsValid)
                 {
-                    var putRecord = (RavenPut)record;
+                    // If the control file is hosed, then we need to start clean
+                    _index.Reset();
+                }
 
-                    // TODO - updating index is causing duplicate index records.  Need to have index
-                    // load itself first so that the UpdateIndex only writes *if* it has changed.  Just because
-                    // we are after the last checkpoint doesn't mean that index isn't up to date
-                    _index.UpdateIndex(new FileStoreMetaData(putRecord.Document.Key, putRecord.Id, putRecord.Position,
-                                                             putRecord.Length));
+                // Try to populate the index
+                _index.Populate();
 
-                    if (putRecord.Id > id)
+                if (_index.IsValid)
+                {
+                    if (_controlFile.IsValid)
                     {
-                        id = putRecord.Id;
+                        position = _controlFile.LastCheckpointPosition;
+                    }
+                    else
+                    {
+                        position = FindLastCheckpoint(readStream);
                     }
                 }
-                else if (record is RavenDelete)
+                else
                 {
-                    var del = (RavenDelete)record;
+                    // Index was hosed.  Reset checkpoint data
+                    _controlFile.Reset();
+                    position = 0;
+                }
 
-                    _index.RemoveFromIndex(del.Key);
+                var recoveryData = new RecoveryProcessor(readStream, position, _index).Recover();
+
+                if (recoveryData.LastGoodPosition != _writeStream.Length)
+                {
+                    // End of file is corrupted; truncate it
+                    // TODO - should archive bad data for possible manual recovery
+                    _writeStream.Truncate(recoveryData.LastGoodPosition);
+
+                    // Get index to invalidate any records that pointed into the corrupt section
+                    _index.InvalidateRecordsPointingBeyond(recoveryData.LastGoodPosition);
+                }
+
+                _writeStream.Seek(0, SeekOrigin.End);
+
+                if (recoveryData.LatestId > _controlFile.LatestId)
+                {
+                    _controlFile.LatestId = recoveryData.LatestId;
+                }
+
+                if (recoveryData.EndPosition != _controlFile.LastCheckpointPosition)
+                {
+                    Checkpoint();
                 }
             }
-
-            if (_readStream.GetStream(_dataFilePath).Position != _controlFile.LastCheckpointPosition)
-            {
-                Checkpoint();
-            }
         }
 
-        private void SeekToLastCheckpoint()
-        {
-            var position = _controlFile.LastCheckpointPosition;
-
-            if (position == 0)
-            {
-                position = FindLastCheckpoint();
-            }
-
-            _readStream.GetStream(_dataFilePath).Seek(position, SeekOrigin.Begin);
-        }
-
-        private long FindLastCheckpoint()
+        private long FindLastCheckpoint(RavenReadStream readStream)
         {
             long position = 0;
 
-            while (!_readStream.GetStream(_dataFilePath).EndOfFile)
+            while (!readStream.EndOfFile)
             {
-                RavenRecord record = _readStream.GetStream(_dataFilePath).ReadRecord(RecordType.Checkpoint);
+                var record = readStream.ReadRecord(RecordType.Checkpoint);
 
                 if (record != null)
                 {
-                    position = _readStream.GetStream(_dataFilePath).Position - record.Length;
+                    position = readStream.Position - record.Length;
                 }
             }
 
             return position;
         }
 
+
         private void OpenDataFiles()
         {
-            _writeStream = new RavenWriteStream(_dataFilePath);
-            _writeStream.Seek(0, SeekOrigin.End);
-
-            OpenReader();
-            _controlFile = new ControlFile(DataPath);
+            _writeStream = new RavenWriteStream(_dataFilePath, WriterOptions.NonBuffered);
+            _controlFile = new ControlFile(_dataDirectory);
+            _index = new RavenFileStoreIndex(_dataDirectory);
         }
 
         private static void CreateDataDirectory(string dataPath)
@@ -254,7 +264,6 @@ namespace Raven.ManagedStorage
         {
             Dispose();
         }
-
 
         private void CheckpointIfRequired()
         {
@@ -276,7 +285,7 @@ namespace Raven.ManagedStorage
 
                 RavenCheckpoint.Write(_index.Position, _writeStream);
 
-                _controlFile.UpdateControlFile(position, _latestId);
+                _controlFile.UpdateControlFile(position);
 
                 _writesSinceLastCheckpoint = 0;
             }
