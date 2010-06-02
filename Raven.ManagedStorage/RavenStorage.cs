@@ -17,12 +17,6 @@ namespace Raven.ManagedStorage
         public void Dispose()
         {
             _store.Dispose();
-            GC.SuppressFinalize(this);
-        }
-
-        ~RavenStorage()
-        {
-            Dispose();
         }
 
         public void AddDocument(string key, string data, Guid? etag, string metadata)
