@@ -105,7 +105,6 @@ namespace Raven.ManagedStorage.Tests
 
             using (var fs = new RavenStorage(new RavenFileStore("data")))
             {
-                // Add enough items to force a checkpoint record
                 for (var i = 0; i < 100; i++)
                 {
                     fs.AddDocument(key + i, data, null, metadata);
@@ -368,7 +367,6 @@ namespace Raven.ManagedStorage.Tests
          * 
          * Tasks (Add, GetFirstTask, CompleteCurrentTask, DoesTasksExistsForIndex)
          * Attachements (Add, Delete, Get)
-         * Checkpoint on dispose
          * Transactions
          * Critical Finalizers
          * Check MD5 hash

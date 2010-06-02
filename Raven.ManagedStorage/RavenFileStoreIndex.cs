@@ -8,7 +8,7 @@ namespace Raven.ManagedStorage
 {
     internal class RavenFileStoreIndex : IDisposable
     {
-        private const string IndexStoreName = "index.raven";
+        public const string IndexStoreName = "index.raven";
 
         private readonly ConcurrentDictionary<string, FileStoreMetaData> _keyIndex = new ConcurrentDictionary<string, FileStoreMetaData>();
         private readonly ConcurrentDictionary<long, FileStoreMetaData> _idIndex = new ConcurrentDictionary<long, FileStoreMetaData>();
@@ -38,26 +38,8 @@ namespace Raven.ManagedStorage
                 IsValid = false;
             }
 
-            _writeStream = new RavenWriteStream(_path, WriterOptions.Buffered);
+            _writeStream = new RavenWriteStream(_path);
             _writeStream.Seek(0, SeekOrigin.End);
-        }
-
-        public void ProcessRecoveryData(RavenRecord record)
-        {
-            if (record is RavenPut)
-            {
-                var putRecord = (RavenPut)record;
-
-                UpdateIndex(new FileStoreMetaData(putRecord.Document.Key, putRecord.Id,
-                                                    putRecord.Position,
-                                                    putRecord.Length));
-            }
-            else if (record is RavenDelete)
-            {
-                var del = (RavenDelete)record;
-
-                RemoveFromIndex(del.Key);
-            }
         }
 
         public long Position
@@ -88,6 +70,11 @@ namespace Raven.ManagedStorage
         {
             WriteToIndex(info);
 
+            UpdateIndexWithoutPersistence(info);
+        }
+
+        public void UpdateIndexWithoutPersistence(FileStoreMetaData info)
+        {
             _keyIndex.AddOrUpdate(info.Key, info, (existingKey, existingValue) => info);
             _idIndex.AddOrUpdate(info.Id, info, (existingKey, existingValue) => info);
         }
@@ -119,48 +106,6 @@ namespace Raven.ManagedStorage
             return _idIndex.TryGetValue(id, out info) ? info : null;
         }
 
-        public void Populate()
-        {
-            // Spin through the index file
-            try
-            {
-                using (var readStream = new RavenReadStream(_path, ReaderOptions.Sequential))
-                {
-                    while (!readStream.EndOfFile)
-                    {
-                        var indexRecord = readStream.ReadRecord(RecordType.IndexPut | RecordType.IndexDelete);
-
-                        if (indexRecord == null) continue;
-
-                        if (indexRecord is RavenIndexPut)
-                        {
-                            // TODO - FileStoreMetaData pretty much the same as RavenIndexPut - can reuse and save an alloc?
-                            var put = (RavenIndexPut) indexRecord;
-
-                            var info = new FileStoreMetaData(put.Key, put.Id, put.DataPosition, put.DataLength)
-                                           {IndexPosition = put.Position};
-
-                            _keyIndex.AddOrUpdate(put.Key, info, (existingKey, existingValue) => info);
-                            _idIndex.AddOrUpdate(put.Id, info, (existingKey, existingValue) => info);
-                        }
-                        else if (indexRecord is RavenIndexDelete)
-                        {
-                            var del = (RavenIndexDelete) indexRecord;
-                            FileStoreMetaData doc;
-
-                            _keyIndex.TryRemove(del.Key, out doc);
-                            _idIndex.TryRemove(del.Id, out doc);
-                        }
-                    }
-                }
-            }
-            catch (FileCorruptedException)
-            {
-                // Index file is hosed
-                Reset();
-            }
-        }
-
         private void InvalidateRecord(long indexPosition)
         {
             _writeStream.Seek(indexPosition, SeekOrigin.Begin);
@@ -179,14 +124,6 @@ namespace Raven.ManagedStorage
             _writeStream.Flush();
         }
 
-        public void Reset()
-        {
-            CloseFiles();
-            File.Delete(_path);
-            OpenFiles();
-            IsValid = false;
-        }
-
         public void InvalidateRecordsPointingBeyond(long lastGoodPosition)
         {
             foreach (var key in _keyIndex.Where(key => key.Value.DataPosition >= lastGoodPosition))
@@ -198,6 +135,20 @@ namespace Raven.ManagedStorage
 
                 InvalidateRecord(key.Value.IndexPosition);
             }
+        }
+
+        public void RemoveFromIndexWithoutPersistence(RavenIndexDelete del)
+        {
+            FileStoreMetaData doc;
+
+            _keyIndex.TryRemove(del.Key, out doc);
+            _idIndex.TryRemove(del.Id, out doc);
+        }
+
+        public void Truncate(long lastGoodPosition)
+        {
+            _writeStream.Truncate(lastGoodPosition);
+            _writeStream.Seek(0, SeekOrigin.End);
         }
     }
 }

@@ -78,9 +78,6 @@ namespace Raven.ManagedStorage
 
             switch (type)
             {
-                case RecordType.Checkpoint:
-                    record = new RavenCheckpoint(this);
-                    break;
                 case RecordType.Put:
                     record = new RavenPut(this);
                     break;

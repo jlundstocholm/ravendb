@@ -6,10 +6,9 @@ namespace Raven.ManagedStorage.DataRecords
     public enum RecordType
     {
         Put = 0x1,
-        Checkpoint = 0x2,
-        IndexPut = 0x4,
-        Delete = 0x8,
-        IndexDelete = 0x10,
-        Invalidated = 0x20
+        IndexPut = 0x2,
+        Delete = 0x4,
+        IndexDelete = 0x8,
+        Invalidated = 0x1B0
     }
 }

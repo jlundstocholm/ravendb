@@ -11,7 +11,7 @@ namespace Raven.ManagedStorage
 {
     public class RavenFileStore : IRavenDataStore
     {
-        private const string DataStoreName = "data.raven";
+        public const string DataStoreName = "data.raven";
         private const int CheckpointThreshold = 100;
 
         private readonly object _lockObject = new object();
@@ -22,6 +22,7 @@ namespace Raven.ManagedStorage
         private readonly string _dataDirectory;
         private RavenWriteStream _writeStream;
         private readonly ConcurrentQueue<RavenReadStream> _readStreams = new ConcurrentQueue<RavenReadStream>();
+        private long _latestId;
 
         private int _writesSinceLastCheckpoint;
 
@@ -45,19 +46,18 @@ namespace Raven.ManagedStorage
             }
         }
 
-
         public FileStoreMetaData WriteToStore(RavenDocument doc)
         {
             lock (_lockObject)
             {
-                _controlFile.LatestId++;
+                _latestId++;
 
                 var position = _writeStream.Position;
-                var length = RavenPut.Write(_controlFile.LatestId, doc, _writeStream);
+                var length = RavenPut.Write(_latestId, doc, _writeStream);
 
                 _writeStream.Flush();
 
-                var docInfo = new FileStoreMetaData(doc.Key, _controlFile.LatestId, position, length);
+                var docInfo = new FileStoreMetaData(doc.Key, _latestId, position, length);
 
                 _index.UpdateIndex(docInfo);
 
@@ -172,82 +172,25 @@ namespace Raven.ManagedStorage
         {
             using (var readStream = new RavenReadStream(_dataFilePath, ReaderOptions.Sequential))
             {
-                var position = 0L;
+                var controlInfo = _controlFile.GetControlData();
 
-                if (!_controlFile.IsValid)
+                var latestId = new RecoveryProcessor(_dataDirectory, this, _index).Recover();
+
+                if (latestId > controlInfo.LatestId)
                 {
-                    // If the control file is hosed, then we need to start clean
-                    _index.Reset();
-                }
-
-                // Try to populate the index
-                _index.Populate();
-
-                if (_index.IsValid)
-                {
-                    if (_controlFile.IsValid)
-                    {
-                        position = _controlFile.LastCheckpointPosition;
-                    }
-                    else
-                    {
-                        position = FindLastCheckpoint(readStream);
-                    }
+                    _latestId = latestId;
+                    Checkpoint();
                 }
                 else
                 {
-                    // Index was hosed.  Reset checkpoint data
-                    _controlFile.Reset();
-                    position = 0;
-                }
-
-                var recoveryData = new RecoveryProcessor(readStream, position, _index).Recover();
-
-                if (recoveryData.LastGoodPosition != _writeStream.Length)
-                {
-                    // End of file is corrupted; truncate it
-                    // TODO - should archive bad data for possible manual recovery
-                    _writeStream.Truncate(recoveryData.LastGoodPosition);
-
-                    // Get index to invalidate any records that pointed into the corrupt section
-                    _index.InvalidateRecordsPointingBeyond(recoveryData.LastGoodPosition);
-                }
-
-                _writeStream.Seek(0, SeekOrigin.End);
-
-                if (recoveryData.LatestId > _controlFile.LatestId)
-                {
-                    _controlFile.LatestId = recoveryData.LatestId;
-                }
-
-                if (recoveryData.EndPosition != _controlFile.LastCheckpointPosition)
-                {
-                    Checkpoint();
+                    _latestId = controlInfo.LatestId;
                 }
             }
         }
-
-        private long FindLastCheckpoint(RavenReadStream readStream)
-        {
-            long position = 0;
-
-            while (!readStream.EndOfFile)
-            {
-                var record = readStream.ReadRecord(RecordType.Checkpoint);
-
-                if (record != null)
-                {
-                    position = readStream.Position - record.Length;
-                }
-            }
-
-            return position;
-        }
-
 
         private void OpenDataFiles()
         {
-            _writeStream = new RavenWriteStream(_dataFilePath, WriterOptions.NonBuffered);
+            _writeStream = new RavenWriteStream(_dataFilePath);
             _controlFile = new ControlFile(_dataDirectory);
             _index = new RavenFileStoreIndex(_dataDirectory);
         }
@@ -281,14 +224,16 @@ namespace Raven.ManagedStorage
             {
                 _index.Flush();
 
-                var position = _writeStream.Position;
-
-                RavenCheckpoint.Write(_index.Position, _writeStream);
-
-                _controlFile.UpdateControlFile(position);
+                _controlFile.UpdateControlFile(new ControlInfo { LatestId = _latestId });
 
                 _writesSinceLastCheckpoint = 0;
             }
+        }
+
+        public void Truncate(long lastGoodPosition)
+        {
+            _writeStream.Truncate(lastGoodPosition);
+            _writeStream.Seek(0, SeekOrigin.End);
         }
     }
 }

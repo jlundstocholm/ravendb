@@ -15,9 +15,9 @@ namespace Raven.ManagedStorage
         private readonly FileStream _fileStream;
         private readonly RavenWriter _writer;
 
-        public RavenWriteStream(string fileName, WriterOptions options)
+        public RavenWriteStream(string fileName)
         {
-            _fileStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 16, options == WriterOptions.NonBuffered ? FileOptions.WriteThrough : FileOptions.None);
+            _fileStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 16, FileOptions.WriteThrough);
             _writer = new RavenWriter(_fileStream);
         }
 
