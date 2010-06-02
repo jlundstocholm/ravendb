@@ -30,23 +30,23 @@ namespace Raven.ManagedStorage
 
         private void PerformVersionCheck(Guid? etag, string key)
         {
-            if (etag != null)
-            {
-                Guid? existingEtag = _store.GetETag(key);
+        	if (etag == null)
+        		return;
+        	
+			Guid? existingEtag = _store.GetETag(key);
 
-                if (existingEtag != null && existingEtag != etag)
-                {
-                    throw new ConcurrencyException("PUT attempted on document '" + key +
-                                                   "' using a non current etag")
-                              {
-                                  ActualETag = etag.Value,
-                                  ExpectedETag = existingEtag.Value
-                              };
-                }
-            }
+        	if (existingEtag != null && existingEtag != etag)
+        	{
+        		throw new ConcurrencyException("PUT attempted on document '" + key +
+        			"' using a non current etag")
+        		{
+        			ActualETag = etag.Value,
+        			ExpectedETag = existingEtag.Value
+        		};
+        	}
         }
 
-        public JsonDocument DocumentByKey(string key)
+    	public JsonDocument DocumentByKey(string key)
         {
             return _store.GetDocument(key);
         }
