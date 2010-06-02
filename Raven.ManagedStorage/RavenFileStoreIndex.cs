@@ -52,8 +52,6 @@ namespace Raven.ManagedStorage
         public void Dispose()
         {
             CloseFiles();
-
-            GC.SuppressFinalize(this);
         }
 
         private void CloseFiles()
@@ -61,10 +59,6 @@ namespace Raven.ManagedStorage
             if (_writeStream != null) _writeStream.Dispose();
         }
 
-        ~RavenFileStoreIndex()
-        {
-            Dispose();
-        }
 
         public void UpdateIndex(FileStoreMetaData info)
         {
