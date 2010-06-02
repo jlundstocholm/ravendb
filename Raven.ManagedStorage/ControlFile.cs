@@ -26,12 +26,6 @@ namespace Raven.ManagedStorage
         {
             _fileStream.Close();
 
-            GC.SuppressFinalize(this);
-        }
-
-        ~ControlFile()
-        {
-            Dispose();
         }
 
         private void OpenFile()
