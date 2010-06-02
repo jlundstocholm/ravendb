@@ -32,7 +32,7 @@ namespace Raven.ManagedStorage
         {
             var path = Path.Combine(_dataPath, ControlFileName);
 
-            _fileStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 16, FileOptions.WriteThrough);
+            _fileStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 32, FileOptions.WriteThrough);
         }
 
         public ControlInfo GetControlData()
