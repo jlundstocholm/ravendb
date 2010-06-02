@@ -59,7 +59,6 @@ namespace Raven.ManagedStorage
             if (_writeStream != null) _writeStream.Dispose();
         }
 
-
         public void UpdateIndex(FileStoreMetaData info)
         {
             WriteToIndex(info);
@@ -89,15 +88,15 @@ namespace Raven.ManagedStorage
         public FileStoreMetaData GetDocumentInfo(string key)
         {
             FileStoreMetaData info;
-
-            return _keyIndex.TryGetValue(key, out info) ? info : null;
+        	_keyIndex.TryGetValue(key, out info);
+            return info;
         }
 
         public FileStoreMetaData GetDocumentInfo(long id)
         {
             FileStoreMetaData info;
-
-            return _idIndex.TryGetValue(id, out info) ? info : null;
+        	_idIndex.TryGetValue(id, out info);
+            return info;
         }
 
         private void InvalidateRecord(long indexPosition)
