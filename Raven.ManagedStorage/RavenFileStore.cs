@@ -164,8 +164,6 @@ namespace Raven.ManagedStorage
             if (_writeStream != null) _writeStream.Dispose();
             if (_index != null) _index.Dispose();
             if (_controlFile != null) _controlFile.Dispose();
-
-            GC.SuppressFinalize(this);
         }
 
         private void PerformRecovery()
@@ -201,11 +199,6 @@ namespace Raven.ManagedStorage
             {
                 Directory.CreateDirectory(dataPath);
             }
-        }
-
-        ~RavenFileStore()
-        {
-            Dispose();
         }
 
         private void CheckpointIfRequired()
