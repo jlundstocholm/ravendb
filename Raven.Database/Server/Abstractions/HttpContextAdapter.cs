@@ -39,7 +39,7 @@ namespace Raven.Database.Server.Abstractions
 			get { return context.User; }
 		}
 
-		public void FinalizeResonse()
+		public void FinalizeResponse()
 		{
 			// here it is a no op
 		}

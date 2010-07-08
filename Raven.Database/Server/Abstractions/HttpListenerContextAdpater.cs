@@ -39,7 +39,7 @@ namespace Raven.Database.Server.Abstractions
 			get { return ctx.User; }
 		}
 
-		public void FinalizeResonse()
+		public void FinalizeResponse()
 		{
 			try
 			{

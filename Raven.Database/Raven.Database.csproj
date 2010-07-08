@@ -129,6 +129,7 @@
     <Compile Include="Plugins\ReadOperation.cs" />
     <Compile Include="Plugins\ReadVetoResult.cs" />
     <Compile Include="Server\Abstractions\HttpContextAdapter.cs" />
+    <Compile Include="Server\Abstractions\HttpHeaderParser.cs" />
     <Compile Include="Server\Abstractions\HttpListenerContextAdpater.cs" />
     <Compile Include="Server\Abstractions\HttpListenerRequestAdapter.cs" />
     <Compile Include="Server\Abstractions\HttpListenerResponseAdapter.cs" />
@@ -194,6 +195,12 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PutResult.cs" />
     <Compile Include="RavenConfiguration.cs" />
+    <Compile Include="Server\Abstractions\RequestLine.cs" />
+    <Compile Include="Server\Abstractions\StringExtensions.cs" />
+    <Compile Include="Server\Abstractions\TcpHttpContext.cs" />
+    <Compile Include="Server\Abstractions\TcpHttpRequest.cs" />
+    <Compile Include="Server\Abstractions\TcpHttpResponse.cs" />
+    <Compile Include="Server\Abstractions\TupleExtensions.cs" />
     <Compile Include="Server\HttpServer.cs" />
     <Compile Include="Server\Responders\AdminBackup.cs" />
     <Compile Include="Server\Responders\Docs.cs" />
