@@ -21,7 +21,7 @@ namespace Raven.Database.Server
         public IEnumerable<RequestResponder> RequestResponders { get; set; }
 
         public RavenConfiguration Configuration { get; private set; }
-        private HttpListener _listener;
+        private TcpHttpListener _listener;
 
         private readonly ILog _logger = LogManager.GetLogger(typeof(HttpServer));
 
@@ -56,58 +56,13 @@ namespace Raven.Database.Server
 
         public void Start()
         {
-            _listener = new HttpListener();
-            string virtualDirectory = Configuration.VirtualDirectory;
-            if (virtualDirectory.EndsWith("/") == false)
-                virtualDirectory = virtualDirectory + "/";
-            _listener.Prefixes.Add("http://+:" + Configuration.Port + virtualDirectory);
-            switch (Configuration.AnonymousUserAccessMode)
-            {
-                case AnonymousUserAccessMode.None:
-                    _listener.AuthenticationSchemes = AuthenticationSchemes.IntegratedWindowsAuthentication;
-                    break;
-                case AnonymousUserAccessMode.All:
-                    break;
-                case AnonymousUserAccessMode.Get:
-                    _listener.AuthenticationSchemes = AuthenticationSchemes.IntegratedWindowsAuthentication |
-                        AuthenticationSchemes.Anonymous;
-                    _listener.AuthenticationSchemeSelectorDelegate = request =>
-                    {
-                        return request.HttpMethod == "GET" || request.HttpMethod == "HEAD" ? 
-                            AuthenticationSchemes.Anonymous : 
-                            AuthenticationSchemes.IntegratedWindowsAuthentication;
-                    };
-                    break;
-                default:
-                    throw new ArgumentException("Cannot understand access mode: " + Configuration.AnonymousUserAccessMode   );
-            }
-
+            _listener = new TcpHttpListener(Configuration);
             _listener.Start();
-            _listener.BeginGetContext(GetContext, null);
+            _listener.Requests.Subscribe(OnGetContext);
         }
 
-        private void GetContext(IAsyncResult ar)
+        private void OnGetContext(IHttpContext ctx)
         {
-            IHttpContext ctx;
-            try
-            {
-                ctx = new HttpListenerContextAdpater(_listener.EndGetContext(ar), Configuration);
-                //setup waiting for the next request
-                _listener.BeginGetContext(GetContext, null);
-            }
-            catch(InvalidOperationException)
-            {
-                // can't get current request / end new one, probably
-                // listner shutdown
-                return;
-            }
-            catch (HttpListenerException)
-            {
-                // can't get current request / end new one, probably
-                // listner shutdown
-                return;
-            }
-
             if (_concurrentRequestSemaphore.Wait(TimeSpan.FromSeconds(5)) == false)
             {
                 HandleTooBusyError(ctx);

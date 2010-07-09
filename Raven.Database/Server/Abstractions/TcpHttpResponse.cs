@@ -11,13 +11,15 @@ namespace Raven.Database.Server.Abstractions
 {
     public class TcpHttpResponse : IHttpResponse
     {
-        private readonly Socket _socket;
+        private readonly TcpClient _client;
         private readonly NameValueCollection _headers = new NameValueCollection();
         private readonly MemoryStream _outputStream = new MemoryStream();
 
-        public TcpHttpResponse(Socket socket)
+        public TcpHttpResponse(TcpClient client)
         {
-            _socket = socket;
+            _client = client;
+            StatusCode = 200;
+            StatusDescription = "OK";
         }
 
         public NameValueCollection Headers
@@ -43,8 +45,7 @@ namespace Raven.Database.Server.Abstractions
             StatusCode = 302;
             StatusDescription = "Found";
             ContentType = "text/html";
-            Headers.Add("Location", "http://www.google.com/");
-            Close();
+            Headers.Add("Location", url);
         }
 
         public void Write(string data)
@@ -59,10 +60,9 @@ namespace Raven.Database.Server.Abstractions
         {
             try
             {
-                _socket.Send(GetBytes().ToArray());
-                _socket.Shutdown(SocketShutdown.Both);
-                _socket.Close();
-
+                var buffer = GetBytes().ToArray();
+                _client.GetStream().Write(buffer, 0, buffer.Length);
+                _client.Close();
             }
             catch (Exception)
             {
@@ -73,7 +73,12 @@ namespace Raven.Database.Server.Abstractions
         {
             var outputBytes = _outputStream.ToArray();
             _outputStream.Close();
-            int contentLength = Encoding.UTF8.GetString(outputBytes).Length;
+            int contentLength;
+            
+            if (ContentType.StartsWith("image"))
+                contentLength = outputBytes.Length;
+            else
+                contentLength = (Encoding.UTF8.GetString(outputBytes).Length + 2);
             return Encoding.UTF8.GetBytes(GetHeaderString(contentLength)).Concat(outputBytes);
         }
 

@@ -70,6 +70,7 @@ namespace Raven.Server
 
 		private static bool CanStartHttpListener(int port)
 		{
+		    return true;
 			try
 			{
 				var httpListener = new HttpListener();

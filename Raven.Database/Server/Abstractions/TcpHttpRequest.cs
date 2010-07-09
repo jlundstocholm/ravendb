@@ -14,20 +14,17 @@ namespace Raven.Database.Server.Abstractions
 {
     public class TcpHttpRequest : IHttpRequest
     {
-        private readonly byte[] _bytes;
-        private readonly object _sync = new object();
-        private readonly Socket _socket;
+        private readonly TcpClient _client;
+        private readonly int _port;
         private NameValueCollection _headers = new NameValueCollection();
         private RequestLine _requestLine;
         private MemoryStream _stream;
-        private bool _initialized;
 
-        public TcpHttpRequest(Socket socket)
+        public TcpHttpRequest(TcpClient client, int port)
         {
-            _bytes = new byte[socket.Available];
-            _socket = socket;
-            socket.Receive(_bytes);
-            Initialize(_bytes);
+            _client = client;
+            _port = port;
+            Initialize(GetIncomingData(1000));
         }
 
         public NameValueCollection Headers
@@ -62,16 +59,15 @@ namespace Raven.Database.Server.Abstractions
             }
         }
 
-        public Uri Url { get; private set; }
+        public Uri Url { get { return new Uri(RawUrl); } }
 
-        public string RawUrl { get; private set; }
+        public string RawUrl { get { return string.Format("http://localhost:{0}{1}", _port, _requestLine.Path); } }
 
         private void Initialize(byte[] bytes)
         {
             var data = Encoding.UTF8.GetString(bytes);
             using (var reader = new StringReader(data))
             {
-                RawUrl = _socket.LocalEndPoint.Serialize().ToString();
                 _requestLine = new RequestLine(reader.ReadLine());
                 _headers = new HttpHeaderParser(reader).Parse();
 
@@ -81,23 +77,52 @@ namespace Raven.Database.Server.Abstractions
                 }
                 else
                 {
-                    _socket.Send(Encoding.UTF8.GetBytes("HTTP/1.1 100 Continue\r\n\r\n"));
-                    while (!_socket.Poll(1000, SelectMode.SelectRead))
-                    {
-                        Thread.Sleep(10);
-                    }
-                    if (_socket.Available > 0)
-                    {
-                        var content = new byte[_socket.Available];
-                        _socket.Receive(content, _socket.Available, SocketFlags.None);
-                        _stream = new MemoryStream(content);
-                    }
-                    //_socket.Shutdown(SocketShutdown.Send);
-                    //_socket.Close();
+                    ProcessExpectContinue();
+                    _headers.Remove("Expect");
                 }
             }
+        }
 
+        private void ProcessExpectContinue()
+        {
+            var bytes = Encoding.UTF8.GetBytes("HTTP/1.1 100 Continue\r\n\r\n");
+            _client.GetStream().Write(bytes, 0, bytes.Length);
+            _stream = new MemoryStream(GetIncomingData(1000));
+        }
 
+        private byte[] GetIncomingData(int timeout)
+        {
+            if (!_client.GetStream().DataAvailable)
+            {
+                if (Timeout(timeout))
+                {
+                    var buffer = Encoding.UTF8.GetBytes("COME ON THEN");
+                    _client.GetStream().Write(buffer, 0, buffer.Length);
+                    if (Timeout(timeout))
+                    {
+                        throw new Exception("No data");
+                    }
+                }
+            }
+            using (var ms = new MemoryStream())
+            {
+                while (_client.GetStream().DataAvailable)
+                {
+                    ms.WriteByte((byte)_client.GetStream().ReadByte());
+                }
+                return ms.ToArray();
+            }
+        }
+
+        private bool Timeout(int timeout)
+        {
+            int elapsed = 0;
+            while (elapsed < timeout && _client.Available == 0)
+            {
+                elapsed += 10;
+                Thread.Sleep(10);
+            }
+            return (elapsed >= timeout);
         }
     }
 }

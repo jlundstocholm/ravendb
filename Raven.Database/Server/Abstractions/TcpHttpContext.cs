@@ -10,17 +10,17 @@ namespace Raven.Database.Server.Abstractions
 {
     public class TcpHttpContext : IHttpContext
     {
+        private readonly TcpClient _client;
         private readonly RavenConfiguration _configuration;
-        private readonly Socket _socket;
         private readonly TcpHttpRequest _request;
         private readonly TcpHttpResponse _response;
 
-        public TcpHttpContext(Socket socket, RavenConfiguration configuration)
+        public TcpHttpContext(TcpClient client, RavenConfiguration configuration)
         {
-            _socket = socket;
+            _client = client;
             _configuration = configuration;
-            _request = new TcpHttpRequest(_socket);
-            _response = new TcpHttpResponse(_socket);
+            _request = new TcpHttpRequest(_client, configuration.Port);
+            _response = new TcpHttpResponse(_client);
         }
 
         public RavenConfiguration Configuration
@@ -48,8 +48,7 @@ namespace Raven.Database.Server.Abstractions
 
         public void FinalizeResponse()
         {
-            _socket.Shutdown(SocketShutdown.Both);
-            _socket.Close();
+            _response.Close();
         }
     }
 }
