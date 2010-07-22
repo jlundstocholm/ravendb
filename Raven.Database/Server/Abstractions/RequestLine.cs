@@ -21,6 +21,10 @@ namespace Raven.Database.Server.Abstractions
             bits[1].SplitPair("?").Do((path, queryString) =>
             {
                 _path = path;
+                while (_path.StartsWith("//"))
+                {
+                    _path = _path.Substring(1);
+                }
                 _queryString = HttpUtility.ParseQueryString(queryString);
             });
             _protocol = bits[2];

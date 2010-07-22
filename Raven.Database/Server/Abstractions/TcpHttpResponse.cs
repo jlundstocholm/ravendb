@@ -20,6 +20,9 @@ namespace Raven.Database.Server.Abstractions
             _client = client;
             StatusCode = 200;
             StatusDescription = "OK";
+            ContentType = "text/text";
+
+            Trace.WriteLine("TcpHttpResponse created...");
         }
 
         public NameValueCollection Headers
@@ -58,14 +61,21 @@ namespace Raven.Database.Server.Abstractions
 
         public void Close()
         {
+            byte[] buffer;
             try
             {
-                var buffer = GetBytes().ToArray();
+                buffer = GetBytes().ToArray();
                 _client.GetStream().Write(buffer, 0, buffer.Length);
-                _client.Close();
+                Trace.WriteLine("TcpHttpResponse closed...");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Trace.WriteLine("TcpHttpResponse failed...");
+                Trace.WriteLine(ex.ToString());
+            }
+            finally
+            {
+                _client.Close();
             }
         }
 

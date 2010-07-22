@@ -38,14 +38,15 @@ namespace Raven.Database.Server.Abstractions
 
         private void AcceptClient(IAsyncResult asyncResult)
         {
-            _listener.BeginAcceptSocket(AcceptClient, null);
+            var newClient = _listener.EndAcceptTcpClient(asyncResult);
+            _listener.BeginAcceptTcpClient(AcceptClient, null);
             try
             {
-                _requests.OnNext(new TcpHttpContext(_listener.EndAcceptTcpClient(asyncResult), _configuration));
+                _requests.OnNext(new TcpHttpContext(newClient, _configuration));
             }
             catch (ObjectDisposedException)
             {
-                //NoOp
+                //NoOp - happens after calling TcpListener.Stop
             }
             catch (Exception ex)
             {

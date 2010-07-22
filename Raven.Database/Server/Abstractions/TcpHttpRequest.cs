@@ -69,6 +69,7 @@ namespace Raven.Database.Server.Abstractions
             using (var reader = new StringReader(data))
             {
                 _requestLine = new RequestLine(reader.ReadLine());
+
                 _headers = new HttpHeaderParser(reader).Parse();
 
                 if (!_headers.AllKeys.Contains("Expect"))
