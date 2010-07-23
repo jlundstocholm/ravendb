@@ -101,8 +101,7 @@ namespace Raven.Database.Server.Abstractions
                     _client.GetStream().Write(buffer, 0, buffer.Length);
                     if (Timeout(timeout))
                     {
-                        return new byte[0];
-//                        throw new Exception("No data");
+                        throw new Exception("No data");
                     }
                 }
             }

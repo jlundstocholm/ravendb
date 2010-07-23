@@ -84,49 +84,22 @@ namespace Raven.Database.Server.Abstractions
             var outputBytes = _outputStream.ToArray();
             _outputStream.Close();
             int contentLength;
-            bool chunked;
-
-            if (ContentType.StartsWith("image"))
-            {
-                contentLength = outputBytes.Length;
-                chunked = false;
-            }
-            else
-            {
-                contentLength = outputBytes.Length;
-                chunked = true;
-            }
-            var result = Encoding.UTF8.GetBytes(GetHeaderString(contentLength, chunked)).AsEnumerable();
             
-            if (chunked)
-            {
-                result = result.Concat(Encoding.UTF8.GetBytes(contentLength.ToString("X") + "\r\n"))
-                    .Concat(outputBytes)
-                    .Concat(Encoding.UTF8.GetBytes("\r\n0\r\n\r\n"));
-            }
+            if (ContentType.StartsWith("image"))
+                contentLength = outputBytes.Length;
             else
-            {
-                result = result.Concat(outputBytes);
-            }
-
-            return result;
+                contentLength = (Encoding.UTF8.GetString(outputBytes).Length + 2);
+            return Encoding.UTF8.GetBytes(GetHeaderString(contentLength)).Concat(outputBytes);
         }
 
-        private string GetHeaderString(int contentLength, bool chunked)
+        private string GetHeaderString(int contentLength)
         {
             using (var writer = new StringWriter())
             {
                 writer.WriteLine("HTTP/1.1 {0} {1}", StatusCode, StatusDescription);
-//                writer.WriteLine("Server: TcpHttpWrapper 1.0");
+                writer.WriteLine("Server: TcpHttpWrapper 1.0");
+                writer.WriteLine("Content-Length: {0}", contentLength);
                 writer.WriteLine("Content-Type: {0}", ContentType);
-                if (chunked)
-                {
-                    writer.WriteLine("Transfer-Encoding: chunked");
-                }
-                else
-                {
-                    writer.WriteLine("Content-Length: {0}", contentLength);
-                }
                 foreach (var key in Headers.AllKeys)
                 {
                     writer.WriteLine("{0}: {1}", key, Headers[key]);
@@ -135,21 +108,6 @@ namespace Raven.Database.Server.Abstractions
 
                 return writer.ToString();
             }
-        }
-
-        private int FindStringContentLength(ref byte[] bytes)
-        {
-            string text;
-            using (var memoryStream = new MemoryStream(bytes))
-            {
-                using (var reader = new StreamReader(memoryStream))
-                {
-                    text = reader.ReadToEnd();
-                }
-            }
-
-            bytes = Encoding.UTF8.GetBytes(text);
-            return text.Length;
         }
     }
 }

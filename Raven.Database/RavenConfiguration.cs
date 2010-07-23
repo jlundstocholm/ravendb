@@ -10,8 +10,8 @@ using Raven.Database.Storage;
 
 namespace Raven.Database
 {
-	public class RavenConfiguration
-	{
+    public class RavenConfiguration
+    {
         public IDictionary<string, string> Settings { get; set; }
 
 		public RavenConfiguration()
