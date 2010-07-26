@@ -15,25 +15,25 @@ namespace Raven.Client.Tests.Document
 {
     public class TotalCountServerTest : BaseTest, IDisposable
     {
-        private readonly string path;
+		private readonly string path;
         private readonly int port;
 
         public TotalCountServerTest()
-        {
+		{
             port = 8080;
             path = GetPath("TestDb");
-            NonAdminHttp.EnsureCanListenToWhenInNonAdminContext(8080);
-        }
+			NonAdminHttp.EnsureCanListenToWhenInNonAdminContext(8080);
+		}
 
-        #region IDisposable Members
+		#region IDisposable Members
 
-        public void Dispose()
-        {
-            Thread.Sleep(100);
-            Directory.Delete(path, true);
-        }
+		public void Dispose()
+		{
+			Thread.Sleep(100);
+			Directory.Delete(path, true);
+		}
 
-        #endregion
+		#endregion
 
         [Fact]
         public void TotalResultIsIncludedInQueryResult()

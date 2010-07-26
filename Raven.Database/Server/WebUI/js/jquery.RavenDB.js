@@ -68,36 +68,36 @@
           "via",
           "warning",
         ],
-        
-        getServerUrl: function() {
-            return settings.server;
-        },
+		
+		getServerUrl: function() {
+			return settings.server;
+		},
 
         init: function (options) {
 
-            var scriptSource = (function() {
-                var scripts = document.getElementsByTagName('script');
-                var scriptSrc = null;
-                for (var i = 0; i < scripts.length; i++) {
-                    if (scripts[i].src != null) {
-                        if(scripts[i].getAttribute('src', -1) != null && 
-                            scripts[i].getAttribute('src', -1).length > scripts[i].length){
-                            scriptSrc = scripts[i].getAttribute('src', -1);	
-                        }
-                        else {
-                            scriptSrc = scripts[i].src;
-                        }
-                    }
-                    else {
-                        scriptSrc = scripts[i].getAttribute('src', -1);
-                    }
-                    var indexPosition =  scriptSrc.indexOf('jquery.RavenDB.js');
-                    if(indexPosition != -1)
-                        break;
-                }
-                var indexPosition =  scriptSrc.indexOf('raven/js/jquery.RavenDB.js');
-                return scriptSrc.substring(0, indexPosition);
-            }());
+			var scriptSource = (function() {
+				var scripts = document.getElementsByTagName('script');
+				var scriptSrc = null;
+				for (var i = 0; i < scripts.length; i++) {
+					if (scripts[i].src != null) {
+						if(scripts[i].getAttribute('src', -1) != null && 
+							scripts[i].getAttribute('src', -1).length > scripts[i].length){
+							scriptSrc = scripts[i].getAttribute('src', -1);	
+						}
+						else {
+							scriptSrc = scripts[i].src;
+						}
+					}
+					else {
+						scriptSrc = scripts[i].getAttribute('src', -1);
+					}
+					var indexPosition =  scriptSrc.indexOf('jquery.RavenDB.js');
+					if(indexPosition != -1)
+						break;
+				}
+				var indexPosition =  scriptSrc.indexOf('raven/js/jquery.RavenDB.js');
+				return scriptSrc.substring(0, indexPosition);
+			}());
 
             settings = $.extend({
                 server: scriptSource
@@ -281,7 +281,7 @@
                     successCallback(data);
                 },
                 error: function(request, textStatus, errorThrown) {
-                    var result = JSON.parse(request.responseText)
+					var result = JSON.parse(request.responseText)
                     errorCallback(result);
                 }
             });

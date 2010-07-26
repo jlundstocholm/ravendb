@@ -9,7 +9,7 @@ namespace Raven.Database.Server.Abstractions
 		IHttpRequest Request { get; }
 		IHttpResponse Response { get; }
 		IPrincipal User { get; }
-		void FinalizeResponse();
+		void FinalizeResonse();
 	}
 
 	public static class UrlExtension
