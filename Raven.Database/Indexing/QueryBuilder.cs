@@ -14,18 +14,18 @@ namespace Raven.Database.Indexing
 	{
 		static readonly Regex untokenizedQuery = new Regex(@"([\w\d_]+?):(\[\[.+?\]\])", RegexOptions.Compiled);
 
-		public static Query BuildQuery(string query)
+		public static Query BuildQuery(string query, PerFieldAnalyzerWrapper analyzer)
 		{
-			var analyzer = new PerFieldAnalyzerWrapper(new StandardAnalyzer(Version.LUCENE_29));
 			var keywordAnalyzer = new KeywordAnalyzer();
 			try
 		    {
 		    	query = PreProcessUntokenizedTerms(analyzer, query, keywordAnalyzer);
-				return new RangeQueryParser(Version.LUCENE_29, "", analyzer).Parse(query);
+		    	var queryParser = new RangeQueryParser(Version.LUCENE_29, "", analyzer);
+				queryParser.SetAllowLeadingWildcard(true);
+		    	return queryParser.Parse(query);;
 			}
 		    finally
 		    {
-		        analyzer.Close();
 				keywordAnalyzer.Close();
 		    }
 		}

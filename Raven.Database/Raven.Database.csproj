@@ -115,6 +115,7 @@
     <Compile Include="Commercial\ValidateLicense.cs" />
     <Compile Include="Commercial\WarningMessagesHolder.cs" />
     <Compile Include="Data\BackupRequest.cs" />
+    <Compile Include="Data\DisposableAction.cs" />
     <Compile Include="Exceptions\IndexDoesNotExists.cs" />
     <Compile Include="Extensions\StreamExtension.cs" />
     <Compile Include="Extensions\IOExtensions.cs" />
@@ -125,6 +126,7 @@
     <Compile Include="PerformanceCounters.cs" />
     <Compile Include="Plugins\AbstractBackgroundTask.cs" />
     <Compile Include="Plugins\AbstractDocumentCodec.cs" />
+    <Compile Include="Plugins\AbstractDynamicCompilationExtension.cs" />
     <Compile Include="Plugins\Builtins\FilterRavenInternalDocumentsReadTrigger.cs" />
     <Compile Include="Plugins\AbstractIndexUpdateTrigger.cs" />
     <Compile Include="Plugins\AbstractReadTrigger.cs" />
@@ -206,6 +208,7 @@
     <Compile Include="Server\Abstractions\TcpHttpResponse.cs" />
     <Compile Include="Server\Abstractions\TupleExtensions.cs" />
     <Compile Include="Server\HttpServer.cs" />
+    <Compile Include="Server\NonAdminHttp.cs" />
     <Compile Include="Server\Responders\AdminBackup.cs" />
     <Compile Include="Server\Responders\Docs.cs" />
     <Compile Include="Server\Responders\Document.cs" />

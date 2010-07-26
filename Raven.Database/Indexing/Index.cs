@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using log4net;
+using Lucene.Net.Analysis;
 using Lucene.Net.Analysis.Standard;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
@@ -73,34 +74,54 @@ namespace Raven.Database.Indexing
         	IndexSearcher indexSearcher;
         	using (searcher.Use(out indexSearcher))
             {
-                var search = ExecuteQuery(indexSearcher, indexQuery, GetLuceneQuery(indexQuery));
-                indexQuery.TotalSize.Value = search.totalHits;
-                var previousDocuments = new HashSet<string>();
-                for (var i = indexQuery.Start; i < search.totalHits && (i - indexQuery.Start) < indexQuery.PageSize; i++)
-                {
-                    var document = indexSearcher.Doc(search.scoreDocs[i].doc);
-                    if (IsDuplicateDocument(document, indexQuery.FieldsToFetch, previousDocuments))
-                        continue;
-                    yield return RetrieveDocument(document, indexQuery.FieldsToFetch);
-                }
+				var previousDocuments = new HashSet<string>();
+            	var luceneQuery = GetLuceneQuery(indexQuery);
+            	var start = indexQuery.Start;
+            	var pageSize = indexQuery.PageSize;
+            	var skippedDocs = 0;
+            	var returnedResults = 0;
+            	do
+            	{
+					if(skippedDocs > 0)
+					{
+						start = start + pageSize;
+						// trying to guesstimate how many results we will need to read from the index
+						// to get enough unique documents to match the page size
+						pageSize = skippedDocs * indexQuery.PageSize; 
+						skippedDocs = 0;
+					}
+					var search = ExecuteQuery(indexSearcher, luceneQuery, start, pageSize, indexQuery.SortedFields);
+					indexQuery.TotalSize.Value = search.totalHits;
+					for (var i = start; i < search.totalHits && (i - start) < pageSize; i++)
+					{
+						var document = indexSearcher.Doc(search.scoreDocs[i].doc);
+						if (IsDuplicateDocument(document, indexQuery.FieldsToFetch, previousDocuments))
+						{
+							skippedDocs++;
+							continue;
+						}
+						returnedResults++;
+						yield return RetrieveDocument(document, indexQuery.FieldsToFetch);
+					}
+				} while (skippedDocs > 0 && returnedResults < indexQuery.PageSize);
             }
         }
 
-    	private static TopDocs ExecuteQuery(IndexSearcher searcher, IndexQuery indexQuery, Query luceneQuery)
+    	private static TopDocs ExecuteQuery(IndexSearcher searcher, Query luceneQuery, int start, int pageSize, SortedField[] sortedFields)
         {
-        	if(indexQuery.PageSize == int.MaxValue) // we want all docs
+        	if(pageSize == int.MaxValue) // we want all docs
         	{
         		var gatherAllCollector = new GatherAllCollector();
         		searcher.Search(luceneQuery, gatherAllCollector);
         		return gatherAllCollector.ToTopDocs();
         	}
             // NOTE: We get Start + Pagesize results back so we have something to page on
-			if (indexQuery.SortedFields != null && indexQuery.SortedFields.Length > 0)
+			if (sortedFields != null && sortedFields.Length > 0)
             {
-                var sort = new Sort(indexQuery.SortedFields.Select(x => x.ToLuceneSortField()).ToArray());
-                return searcher.Search(luceneQuery, null, indexQuery.PageSize + indexQuery.Start, sort);
+                var sort = new Sort(sortedFields.Select(x => x.ToLuceneSortField()).ToArray());
+                return searcher.Search(luceneQuery, null, pageSize + start, sort);
             }
-        	return searcher.Search(luceneQuery, null, indexQuery.PageSize + indexQuery.Start);
+        	return searcher.Search(luceneQuery, null, pageSize + start);
         }
 
         private Query GetLuceneQuery(IndexQuery indexQuery)
@@ -115,7 +136,23 @@ namespace Raven.Database.Indexing
             else
             {
                 log.DebugFormat("Issuing query on index {0} for: {1}", name, query);
-                luceneQuery = QueryBuilder.BuildQuery(query);
+            	var toDispose = new List<Action>();
+            	PerFieldAnalyzerWrapper analyzer = null;
+				try
+				{
+					analyzer = CreateAnalyzer(toDispose);
+
+					luceneQuery = QueryBuilder.BuildQuery(query, analyzer);
+				}
+				finally
+				{
+					if(analyzer != null)
+						analyzer.Close();
+					foreach (var dispose in toDispose)
+					{
+						dispose();
+					}
+				}
             }
             return luceneQuery;
         }
@@ -180,10 +217,12 @@ namespace Raven.Database.Indexing
 			lock (writeLock)
 			{
 				bool shouldRecreateSearcher;
-				var standardAnalyzer = new StandardAnalyzer(Version.LUCENE_29);
+				var toDispose = new List<Action>();
+				Analyzer analyzer = null;
 				try
 				{
-					var indexWriter = new IndexWriter(directory, standardAnalyzer, IndexWriter.MaxFieldLength.UNLIMITED);
+					analyzer = CreateAnalyzer(toDispose);
+					var indexWriter = new IndexWriter(directory, analyzer, IndexWriter.MaxFieldLength.UNLIMITED);
 					try
 					{
 						shouldRecreateSearcher = action(indexWriter);
@@ -195,16 +234,36 @@ namespace Raven.Database.Indexing
 				}
 				finally
 				{
-					standardAnalyzer.Close();
-
+					if (analyzer != null)
+						analyzer.Close();
+					foreach (var dispose in toDispose)
+					{
+						dispose();
+					}
 				}
     		if (shouldRecreateSearcher)
                 RecreateSearcher();
 			}
 		}
 
+		private PerFieldAnalyzerWrapper CreateAnalyzer(ICollection<Action> toDispose)
+    	{
+    		var standardAnalyzer = new StandardAnalyzer(Version.LUCENE_29);
+			toDispose.Add(standardAnalyzer.Close);
+    		var perFieldAnalyzerWrapper = new PerFieldAnalyzerWrapper(standardAnalyzer);
+    		foreach (var analyzer in indexDefinition.Analyzers)
+    		{
+    			var analyzerInstance = indexDefinition.CreateAnalyzerInstance(analyzer.Key, analyzer.Value);
+				if(analyzerInstance == null)
+					continue;
+				toDispose.Add(analyzerInstance.Close);
+    			perFieldAnalyzerWrapper.AddAnalyzer(analyzer.Key, analyzerInstance);
+    		}
+    		return perFieldAnalyzerWrapper;
+    	}
 
-        protected IEnumerable<object> RobustEnumeration(IEnumerable<object> input, IndexingFunc func,
+
+    	protected IEnumerable<object> RobustEnumeration(IEnumerable<object> input, IndexingFunc func,
 														IStorageActionsAccessor actions, WorkContext context)
         {
             var wrapped = new StatefulEnumerableWrapper<dynamic>(input.GetEnumerator());

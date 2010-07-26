@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Transactions;
 using Newtonsoft.Json;
@@ -14,6 +15,7 @@ using Raven.Database.Json;
 #if !NET_3_5
 using System.Dynamic;
 using Microsoft.CSharp.RuntimeBinder;
+using Raven.Database.Linq;
 using Binder = Microsoft.CSharp.RuntimeBinder.Binder;
 
 #endif
@@ -147,7 +149,7 @@ more responsive application.
 			{
 				OriginalValue = document,
 				Metadata = metadata,
-				OriginalMetadata = metadata,
+				OriginalMetadata = new JObject(metadata),
 				ETag = new Guid(etag),
 				Key = key
 			};
@@ -159,6 +161,8 @@ more responsive application.
 
 		public void Delete<T>(T entity)
 		{
+			if(entitiesAndMetadata.ContainsKey(entity)==false)
+				throw new InvalidOperationException(entity+" is not associated with the session, cannot delete unknown entity instance");
 			deletedEntities.Add(entity);
 		}
 
@@ -176,9 +180,16 @@ more responsive application.
 			if (Equals(entity, default(T)))
 			{
 				entity = documentFound.Deserialize<T>(Conventions.JsonContractResolver);
+#if !NET_3_5
+				var document = entity as JObject;
+				if (document != null)
+				{
+					entity = (T)(object)(new DynamicJsonObject(document));
+				}
+#endif
 			}
 			var identityProperty = documentStore.Conventions.GetIdentityProperty(entity.GetType());
-			if (identityProperty != null)
+			if (identityProperty != null && identityProperty.CanWrite)
 				identityProperty.SetValue(entity, id, null);
 			return entity;
 		}
@@ -215,7 +226,7 @@ more responsive application.
                     // Generate the key up front
                     id = Conventions.GenerateDocumentKey(entity);
 
-                    if (id != null && identityProperty != null)
+					if (id != null && identityProperty != null && identityProperty.CanWrite)
                     {
                         // And store it so the client has access to to it
                         identityProperty.SetValue(entity, id, null);
@@ -315,10 +326,12 @@ more responsive application.
 				if (entitiesAndMetadata.TryGetValue(entity, out documentMetadata) == false)
 					continue;
 
+				batchResult.Metadata["@etag"] = new JValue(batchResult.Etag.ToString());
 				entitiesByKey[batchResult.Key] = entity;
 				documentMetadata.ETag = batchResult.Etag;
 				documentMetadata.Key = batchResult.Key;
-				documentMetadata.OriginalMetadata = batchResult.Metadata;
+				documentMetadata.OriginalMetadata = new JObject(batchResult.Metadata);
+				documentMetadata.Metadata = batchResult.Metadata;
 				documentMetadata.OriginalValue = ConvertEntityToJson(entity, documentMetadata.Metadata);
 
 				// Set/Update the id of the entity
@@ -419,24 +432,29 @@ more responsive application.
 			var entityType = entity.GetType();
 			var identityProperty = documentStore.Conventions.GetIdentityProperty(entityType);
 
-			var objectAsJson = JObject.FromObject(entity, new JsonSerializer
-			{
-				Converters = {new JsonEnumConverter()},
-				ContractResolver = Conventions.JsonContractResolver,
-				ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor
-			});
+			var objectAsJson = GetObjectAsJson(entity);
 			if (identityProperty != null)
 			{
 				objectAsJson.Remove(identityProperty.Name);
 			}
 
-			metadata["Raven-Clr-Type"] = JToken.FromObject(entityType.FullName + ", " + entityType.Assembly.GetName().Name);
+			metadata["Raven-Clr-Type"] = JToken.FromObject(ReflectionUtil.GetFullNameWithoutVersionInformation(entityType));
 
 			var entityConverted = OnEntityConverted;
 			if (entityConverted != null)
 				entityConverted(entity, objectAsJson, metadata);
 
 			return objectAsJson;
+		}
+
+		private JObject GetObjectAsJson(object entity)
+		{
+			return JObject.FromObject(entity, new JsonSerializer
+			{
+				Converters = {new JsonEnumConverter()},
+				ContractResolver = Conventions.JsonContractResolver,
+				ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor
+			});
 		}
 
 		public void Evict<T>(T entity)

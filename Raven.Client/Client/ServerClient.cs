@@ -11,6 +11,7 @@ using Newtonsoft.Json.Linq;
 using Raven.Bundles.Replication.Data;
 using Raven.Client.Document;
 using Raven.Client.Exceptions;
+using Raven.Client.Indexes;
 using Raven.Database;
 using Raven.Database.Data;
 using Raven.Database.Exceptions;
@@ -263,10 +264,11 @@ Failed to get in touch with any of the " + 1 + threadSafeCopy.Count + " Raven in
 
 	    private static void AddTransactionInformation(JObject metadata)
 	    {
-	        if (Transaction.Current == null) 
-                return;
+	    	var transactionInformation = RavenTransactionAccessor.GetTransactionInformation();
+			if (transactionInformation == null)
+				return;
 
-			string txInfo = string.Format("{0}, {1}", PromotableRavenClientEnlistment.GetLocalOrDistributedTransactionId(Transaction.Current.TransactionInformation), TransactionManager.DefaultTimeout);
+			string txInfo = string.Format("{0}, {1}", transactionInformation.Id, transactionInformation.Timeout);
 	        metadata["Raven-Transaction-Information"] = new JValue(txInfo);
 	    }
 
@@ -289,7 +291,19 @@ Failed to get in touch with any of the " + 1 + threadSafeCopy.Count + " Raven in
     	private IndexDefinition DirectGetIndex(string indexName, string operationUrl)
     	{
 			var httpJsonRequest = HttpJsonRequest.CreateHttpJsonRequest(this, operationUrl + "/indexes/" + indexName +"?definition=yes", "GET", credentials);
-    		var indexDefAsString = httpJsonRequest.ReadResponseString();
+			string indexDefAsString;
+			try
+    		{
+    			indexDefAsString = httpJsonRequest.ReadResponseString();
+    		}
+    		catch (WebException e)
+    		{
+				var httpWebResponse = e.Response as HttpWebResponse;
+				if (httpWebResponse != null &&
+					httpWebResponse.StatusCode == HttpStatusCode.NotFound)
+					return null;
+    			throw;
+    		}
     		var indexDefResultAsJson = JObject.Load(new JsonTextReader(new StringReader(indexDefAsString)));
     		return new JsonSerializer().Deserialize<IndexDefinition>(
 				new JTokenReader(indexDefResultAsJson["Index"])

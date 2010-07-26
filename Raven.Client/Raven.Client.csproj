@@ -67,6 +67,7 @@
       <HintPath>..\SharedLibs\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.ComponentModel.Composition" />
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
@@ -92,6 +93,7 @@
     <Compile Include="Client\Async\IAsyncDatabaseCommands.cs" />
     <Compile Include="Client\JsonExtensions.cs" />
     <Compile Include="Client\JsonLuceneDateTimeConverter.cs" />
+    <Compile Include="Client\RavenTransactionAccessor.cs" />
     <Compile Include="Client\WebRequestEventArgs.cs" />
     <Compile Include="Client\Async\WrapperAsyncData.cs" />
     <Compile Include="Document\AbstractDocumentQuery.cs" />
@@ -105,10 +107,11 @@
     <Compile Include="Client\HttpJsonRequest.cs" />
     <Compile Include="Client\IDatabaseCommands.cs" />
     <Compile Include="Document\HiLoKeyGenerator.cs" />
-    <Compile Include="Document\IndexDefinition.cs" />
+    <Compile Include="Indexes\IndexDefinition.cs" />
     <Compile Include="Document\MultiTypeHiLoKeyGenerator.cs" />
     <Compile Include="Document\PromotableRavenClientEnlistment.cs" />
     <Compile Include="Document\RavenClientEnlistment.cs" />
+    <Compile Include="Document\ReflectionUtil.cs" />
     <Compile Include="Document\ShardedDocumentQuery.cs" />
     <Compile Include="EntityStored.cs" />
     <Compile Include="EntityToDocument.cs" />
@@ -121,6 +124,8 @@
     <Compile Include="IDocumentStore.cs" />
     <Compile Include="Document\InMemoryDocumentSessionOperations.cs" />
     <Compile Include="IInMemoryDocumentSessionOperations.cs" />
+    <Compile Include="Indexes\AbstractIndexCreation.cs" />
+    <Compile Include="Indexes\IndexCreation.cs" />
     <Compile Include="ITransactionalDocumentSession.cs" />
     <Compile Include="Linq\DateTools.cs" />
     <Compile Include="Linq\IRavenQueryable.cs" />

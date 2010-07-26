@@ -40,6 +40,9 @@ namespace Raven.Database
 		[ImportMany]
 		public IEnumerable<AbstractReadTrigger> ReadTriggers { get; set; }
 
+		[ImportMany]
+		public AbstractDynamicCompilationExtension[] Extensions { get; set; }
+
 		private readonly WorkContext workContext;
 
 		private Thread[] backgroundWorkers = new Thread[0];
@@ -71,7 +74,8 @@ namespace Raven.Database
 			IndexDefinitionStorage = new IndexDefinitionStorage(
                 TransactionalStorage,
                 configuration.DataDirectory, 
-                configuration.Container.GetExportedValues<AbstractViewGenerator>());
+                configuration.Container.GetExportedValues<AbstractViewGenerator>(),
+				Extensions);
 			IndexStorage = new IndexStorage(IndexDefinitionStorage, configuration);
 
 			workContext.PerformanceCounters = new PerformanceCounters("Instance @ " + configuration.Port);
@@ -189,19 +193,24 @@ select new { Tag = doc[""@metadata""][""Raven-Entity-Name""] };
 		}
 
 		[SuppressUnmanagedCodeSecurity]
-		[DllImport("rpcrt4.dll", SetLastError = true)]
-		private static extern int UuidCreateSequential(out Guid value);
+		[DllImport("rpcrt4.dll", EntryPoint = "UuidCreateSequential", SetLastError = true)]
+		private static extern int UuidCreateSequentialNative(out Guid value);
 
-        public static Guid CreateSequentialUuid()
+		private static void UuidCreateSequential(out Guid value)
+		{
+			Marshal.ThrowExceptionForHR(UuidCreateSequentialNative(out value));
+		}
+
+		public static Guid CreateSequentialUuid()
         {
             Guid value;
-            UuidCreateSequential(out value);
+        	UuidCreateSequential(out value);
             var byteArray = value.ToByteArray();
             Array.Reverse(byteArray);
             return new Guid(byteArray);
         }
 
-	    public JsonDocument Get(string key, TransactionInformation transactionInformation)
+		public JsonDocument Get(string key, TransactionInformation transactionInformation)
 		{
 			JsonDocument document = null;
 			TransactionalStorage.Batch(actions =>
@@ -288,7 +297,7 @@ select new { Tag = doc[""@metadata""][""Raven-Entity-Name""] };
 
 					etag = actions.Documents.AddDocument(key, etag, document, metadata);
 					AddIndexingTask(actions, metadata, () => new IndexDocumentsTask { Keys = new[] { key } });
-                    PutTriggers.Apply(trigger => trigger.AfterPut(key, document, metadata, transactionInformation));
+                    PutTriggers.Apply(trigger => trigger.AfterPut(key, document, metadata, etag.Value, transactionInformation));
                 }
                 else
                 {
@@ -299,12 +308,12 @@ select new { Tag = doc[""@metadata""][""Raven-Entity-Name""] };
 			});
 
 			TransactionalStorage
-				.ExecuteImmediatelyOrRegisterForSyncronization(() => PutTriggers.Apply(trigger => trigger.AfterCommit(key, document, metadata)));
+				.ExecuteImmediatelyOrRegisterForSyncronization(() => PutTriggers.Apply(trigger => trigger.AfterCommit(key, document, metadata, etag.Value)));
 	
 		    return new PutResult
 		    {
 		        Key = key,
-		        ETag = (Guid)etag
+		        ETag = etag.Value
 		    };
 		}
 
@@ -445,7 +454,7 @@ select new { Tag = doc[""@metadata""][""Raven-Entity-Name""] };
 					return name;
 				case IndexCreationOptions.Update:
 					// ensure that the code can compile
-					new DynamicViewCompiler(name, definition).GenerateInstance();
+					new DynamicViewCompiler(name, definition, Extensions).GenerateInstance();
 					DeleteIndex(name);
 					break;
 			}
@@ -762,6 +771,8 @@ select new { Tag = doc[""@metadata""][""Raven-Entity-Name""] };
 		public void ResetIndex(string index)
 		{
 			var indexDefinition = IndexDefinitionStorage.GetIndexDefinition(index);
+			if(indexDefinition == null)
+				throw new InvalidOperationException("There is no index named: " + index);
 			IndexStorage.DeleteIndex(index);
 			IndexStorage.CreateIndexImplementation(index, indexDefinition);
 			TransactionalStorage.Batch(actions =>

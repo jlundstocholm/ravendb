@@ -73,7 +73,24 @@ namespace Raven.Server
                                              AnonymousUserAccessMode = AnonymousUserAccessMode.All
                                          };
 
-            RavenDbServer.EnsureCanListenToWhenInNonAdminContext(ravenConfiguration.Port);
+        private static void RunInDebugMode(AnonymousUserAccessMode? anonymousUserAccessMode)
+        {
+            var consoleAppender = new ConsoleAppender
+            {
+                Layout = new PatternLayout(PatternLayout.DefaultConversionPattern),
+            };
+            consoleAppender.AddFilter(new LoggerMatchFilter
+            {
+                AcceptOnMatch = true,
+                LoggerToMatch = typeof(HttpServer).FullName
+            });
+            consoleAppender.AddFilter(new DenyAllFilter());
+            BasicConfigurator.Configure(consoleAppender);
+            var ravenConfiguration = new RavenConfiguration();
+            NonAdminHttp.EnsureCanListenToWhenInNonAdminContext(ravenConfiguration.Port);
+            if (anonymousUserAccessMode.HasValue)
+                ravenConfiguration.AnonymousUserAccessMode = anonymousUserAccessMode.Value;
+
             using (new RavenDbServer(ravenConfiguration))
             {
                 Console.WriteLine("Raven is ready to process requests.");

@@ -12,6 +12,7 @@ using Newtonsoft.Json.Linq;
 using Raven.Database.Indexing;
 using Raven.Database.Json;
 using Raven.Database.Linq;
+using Raven.Database.Plugins;
 
 namespace Raven.Database.Storage
 {
@@ -26,9 +27,15 @@ namespace Raven.Database.Storage
 
 		private readonly ILog logger = LogManager.GetLogger(typeof (IndexDefinitionStorage));
 		private readonly string path;
+		private readonly AbstractDynamicCompilationExtension[] extensions;
 
-		public IndexDefinitionStorage(ITransactionalStorage  transactionalStorage,string path, IEnumerable<AbstractViewGenerator> compiledGenerators)
+		public IndexDefinitionStorage(
+			ITransactionalStorage  transactionalStorage,
+			string path, 
+			IEnumerable<AbstractViewGenerator> compiledGenerators, 
+			AbstractDynamicCompilationExtension[] extensions)
 		{
+			this.extensions = extensions;// this is used later in the ctor, so it must appears first
 			this.path = Path.Combine(path, IndexDefDir);
 
 			if (Directory.Exists(this.path) == false)
@@ -95,7 +102,7 @@ namespace Raven.Database.Storage
 
 		private DynamicViewCompiler AddAndCompileIndex(string name, IndexDefinition indexDefinition)
 		{
-			var transformer = new DynamicViewCompiler(name, indexDefinition);
+			var transformer = new DynamicViewCompiler(name, indexDefinition, extensions);
 			var generator = transformer.GenerateInstance();
 			indexCache.AddOrUpdate(name, generator, (s, viewGenerator) => generator);
 		    indexDefinitions.AddOrUpdate(name, indexDefinition, (s1, definition) =>
@@ -130,8 +137,7 @@ namespace Raven.Database.Storage
 		public IndexDefinition GetIndexDefinition(string name)
 		{
 		    IndexDefinition value;
-		    if(indexDefinitions.TryGetValue(name, out value)==false)
-		        throw new InvalidOperationException("Index does not exists: " + name);
+			indexDefinitions.TryGetValue(name, out value);
 		    return value;
 		}
 
