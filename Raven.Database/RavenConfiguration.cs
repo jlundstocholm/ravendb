@@ -71,8 +71,17 @@ namespace Raven.Database
 			StorageTypeName = ConfigurationManager.AppSettings["Raven/StorageTypeName"] ??
 				"Raven.Storage.Esent.TransactionalStorage, Raven.Storage.Esent";
 
-			//StorageTypeName = ConfigurationManager.AppSettings["Raven/StorageTypeName"] ??
-			//    "Raven.Storage.Managed.TransactionalStorage, Raven.Storage.Managed";
+		    ListenerProtocol listenerProtocol;
+            if (!Enum.TryParse(ConfigurationManager.AppSettings["Raven/ListenerProtocol"] ?? "Http", true,
+		                                       out listenerProtocol))
+            {
+                listenerProtocol = ListenerProtocol.Http;
+            }
+
+		    ListenerProtocol = listenerProtocol;
+
+		    //StorageTypeName = ConfigurationManager.AppSettings["Raven/StorageTypeName"] ??
+		    //    "Raven.Storage.Managed.TransactionalStorage, Raven.Storage.Managed";
 		}
 
 		public string StorageTypeName { get; set; }
@@ -133,6 +142,8 @@ namespace Raven.Database
 		}
 
 		public TransactionMode TransactionMode { get; set; }
+
+        public ListenerProtocol ListenerProtocol { get; set; }
 
         private string dataDirectory;
         public string DataDirectory 

@@ -78,6 +78,8 @@ namespace Raven.Server
                 case "debug":
                     RunInDebugMode(anonymousUserAccessMode: null);
                     break;
+                case "tcp":
+
 #if DEBUG
                 case "test":
                     var dataDirectory = new RavenConfiguration().DataDirectory;

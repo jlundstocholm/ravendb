@@ -24,6 +24,7 @@ namespace Raven.Server
 			settings.LoadLoggingSettings();
 			database = new DocumentDatabase(settings);
 			database.SpinBackgroundWorkers();
+
 			server = new HttpServer(settings, database);
 			server.Start();
 		}
