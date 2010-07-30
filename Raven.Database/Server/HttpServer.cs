@@ -23,6 +23,7 @@ namespace Raven.Database.Server
         public RavenConfiguration Configuration { get; private set; }
         private HttpListener listener;
         private TcpHttpListener _tcpListener;
+        private IDisposable _tcpSubscription;
 
         private readonly ILog logger = LogManager.GetLogger(typeof(HttpServer));
 
@@ -106,7 +107,13 @@ namespace Raven.Database.Server
             Configuration.AnonymousUserAccessMode = AnonymousUserAccessMode.All;
             _tcpListener = new TcpHttpListener(Configuration);
             _tcpListener.Start();
-            _tcpListener.Requests.Subscribe(GetTcpContext);
+            _tcpSubscription = _tcpListener.Requests.Subscribe(GetTcpContext);
+        }
+
+        public void StopTcp()
+        {
+            _tcpSubscription.Dispose();
+            _tcpListener.Stop();
         }
 
         private void GetContext(IAsyncResult ar)

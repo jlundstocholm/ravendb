@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ServiceDefinition name="CloudRaven" xmlns="http://schemas.microsoft.com/ServiceHosting/2008/10/ServiceDefinition">
+  <WorkerRole name="RavenRole">
+    <ConfigurationSettings>
+      <Setting name="DiagnosticsConnectionString" />
+      <Setting name="StorageAccount" />
+    </ConfigurationSettings>
+    <LocalResources>
+      <LocalStorage name="RavenCache" cleanOnRoleRecycle="false" sizeInMB="256" />
+      <LocalStorage name="App" cleanOnRoleRecycle="false" sizeInMB="16" />
+    </LocalResources>
+    <Endpoints>
+      <InputEndpoint name="Raven" protocol="tcp" port="8080" />
+    </Endpoints>
+  </WorkerRole>
+</ServiceDefinition>
