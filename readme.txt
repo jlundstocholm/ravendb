@@ -1,3 +1,22 @@
+Mark's Fork notes:
+==================
+
+IMPORTANT: This fork requires the Reactive Framework to be installed.
+
+The Samples solution in this fork includes an Azure Cloud project with a Worker Role
+which you can deploy to a Hosted Service.
+
+To get this working, I've had to implement my own TCP-based HTTP stack for the Raven
+server. There may be issues with this which have not turned up during my basic testing.
+If you have any problems, please use the Github Issues feature to report them.
+
+Also, there is no authentication on this implementation. The Role is intended to be used
+internally as storage for a Web application running in the same deployment, although it
+is currently configured as externally facing for testing purposes.
+
+Finally, remember to change the Storage connection strings on the CloudRaven project to
+point to your own storage.
+
 Raven DB
 ========
 This release contains the following:

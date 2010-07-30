@@ -7,7 +7,6 @@
     </ConfigurationSettings>
     <LocalResources>
       <LocalStorage name="RavenCache" cleanOnRoleRecycle="false" sizeInMB="256" />
-      <LocalStorage name="App" cleanOnRoleRecycle="false" sizeInMB="16" />
     </LocalResources>
     <Endpoints>
       <InputEndpoint name="Raven" protocol="tcp" port="8080" />
