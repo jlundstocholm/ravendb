@@ -10,11 +10,29 @@ namespace Raven.Client.Document
 {
 	public class DocumentStore : IDocumentStore
 	{
-		public IDatabaseCommands DatabaseCommands{ get; set;}
+		private Func<IDatabaseCommands> databaseCommandsGenerator;
+		public IDatabaseCommands DatabaseCommands
+		{
+			get
+			{
+				if (databaseCommandsGenerator == null)
+					return null;
+				return databaseCommandsGenerator();
+			}
+		}
 
-		public IAsyncDatabaseCommands AsyncDatabaseCommands { get; set; }
+		private Func<IAsyncDatabaseCommands> asyncDatabaseCommandsGenerator;
+		public IAsyncDatabaseCommands AsyncDatabaseCommands
+		{
+			get
+			{
+				if (asyncDatabaseCommandsGenerator == null)
+					return null;
+				return asyncDatabaseCommandsGenerator();
+			}
+		}
 
-        public event Action<string, object> Stored;
+		public event EventHandler<StoredEntityEventArgs> Stored;
 
 		public DocumentStore()
 		{
@@ -81,9 +99,10 @@ namespace Raven.Client.Document
 		public void Dispose()
 		{
             Stored = null;
-
-            if (DatabaseCommands != null)
-                DatabaseCommands.Dispose();
+#if !CLIENT
+			if (DocumentDatabase != null)
+				DocumentDatabase.Dispose();
+#endif
 		}
 
 		#endregion
@@ -94,14 +113,19 @@ namespace Raven.Client.Document
             if (DatabaseCommands == null)
                 throw new InvalidOperationException("You cannot open a session before initialising the document store. Did you forgot calling Initialise?");
             var session = new DocumentSession(this, storeListeners, deleteListeners);
-            session.Stored += entity =>
-            {
-                var copy = Stored;
-                if (copy != null)
-                    copy(Identifier, entity);
-            };
+			session.Stored += OnSessionStored;
             return session;
         }
+
+		private void OnSessionStored(object entity)
+		{
+			var copy = Stored;
+			if (copy != null)
+				copy(this, new StoredEntityEventArgs
+				{
+					SessionIdentifier = Identifier, EntityInstance = entity
+				});
+		}
 
 		public IDocumentStore RegisterListener(IDocumentStoreListener documentStoreListener)
 		{
@@ -114,12 +138,7 @@ namespace Raven.Client.Document
             if(DatabaseCommands == null)
                 throw new InvalidOperationException("You cannot open a session before initialising the document store. Did you forgot calling Initialise?");
             var session = new DocumentSession(this, storeListeners, deleteListeners);
-			session.Stored += entity =>
-			{
-				var copy = Stored;
-				if (copy != null) 
-					copy(Identifier, entity);
-			};
+			session.Stored += OnSessionStored;
             return session;
         }
 
@@ -136,13 +155,13 @@ namespace Raven.Client.Document
 				{
 					DocumentDatabase = new Raven.Database.DocumentDatabase(configuration);
 					DocumentDatabase.SpinBackgroundWorkers();
-					DatabaseCommands = new EmbededDatabaseCommands(DocumentDatabase, Conventions);
+					databaseCommandsGenerator = () => new EmbededDatabaseCommands(DocumentDatabase, Conventions);
 				}
 				else
 #endif
 				{
-					DatabaseCommands = new ServerClient(Url, Conventions, credentials);
-					AsyncDatabaseCommands = new AsyncServerClient(Url, Conventions, credentials);
+					databaseCommandsGenerator = ()=>new ServerClient(Url, Conventions, credentials);
+					asyncDatabaseCommandsGenerator = ()=>new AsyncServerClient(Url, Conventions, credentials);
 				}
                 if(Conventions.DocumentKeyGenerator == null)// don't overwrite what the user is doing
                 {
@@ -175,12 +194,7 @@ namespace Raven.Client.Document
 				throw new InvalidOperationException("You cannot open an async session because it is not supported on embedded mode");
 
 			var session = new AsyncDocumentSession(this, storeListeners, deleteListeners);
-			session.Stored += entity =>
-			{
-				var copy = Stored;
-				if (copy != null)
-					copy(Identifier, entity);
-			};
+			session.Stored += OnSessionStored;
 			return session;
 		}
 #endif

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Net.Sockets;
@@ -14,6 +15,7 @@ namespace Raven.Database.Server.Abstractions
         private readonly RavenConfiguration _configuration;
         private readonly TcpHttpRequest _request;
         private readonly TcpHttpResponse _response;
+        private readonly Func<Stream, Stream> _responseFilter;
 
         public TcpHttpContext(TcpClient client, RavenConfiguration configuration)
         {
@@ -49,6 +51,11 @@ namespace Raven.Database.Server.Abstractions
         public void FinalizeResonse()
         {
             _response.Close();
+        }
+
+        public void SetResponseFilter(Func<Stream, Stream> responseFilter)
+        {
+            _responseFilter = _responseFilter;
         }
     }
 }

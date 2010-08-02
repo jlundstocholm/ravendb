@@ -6,6 +6,7 @@ using System.Net;
 using Newtonsoft.Json.Linq;
 using System;
 using Raven.Client.Client;
+using Raven.Client.Indexes;
 using Raven.Client.Linq;
 using Raven.Database;
 using Raven.Database.Data;
@@ -14,15 +15,12 @@ namespace Raven.Client.Document
 {
 	public class DocumentSession : InMemoryDocumentSessionOperations, IDocumentSession, ITransactionalDocumentSession
 	{
-		private IDatabaseCommands DatabaseCommands
-		{
-			get { return documentStore.DatabaseCommands; }
-		}
-
+		public IDatabaseCommands DatabaseCommands { get; private set; }
 
 		public DocumentSession(DocumentStore documentStore, IDocumentStoreListener[] storeListeners, IDocumentDeleteListener[] deleteListeners)
 			: base(documentStore, storeListeners, deleteListeners)
 		{
+			DatabaseCommands = documentStore.DatabaseCommands;
 		}
 
 		public T Load<T>(string id)
@@ -58,7 +56,7 @@ namespace Raven.Client.Document
 	    {
             IncrementRequestCount();
             Trace.WriteLine(string.Format("Bulk loading ids [{0}] from {1}", string.Join(", ", ids), StoreIdentifier));
-            return documentStore.DatabaseCommands.Get(ids)
+			return documentStore.DatabaseCommands.Get(ids)
                 .Select(TrackEntity<T>).ToArray();
 	    }
 
@@ -67,12 +65,18 @@ namespace Raven.Client.Document
 	        return new RavenQueryable<T>(new RavenQueryProvider<T>(this, indexName));
 	    }
 
+		public IRavenQueryable<T> Query<T, TIndexCreator>(string indexName) where TIndexCreator : AbstractIndexCreationTask, new()
+		{
+			var indexCreator = new TIndexCreator();
+			return Query<T>(indexCreator.IndexName);
+		}
+
 		public void Refresh<T>(T entity)
 	    {
 	        DocumentMetadata value;
 	        if(entitiesAndMetadata.TryGetValue(entity, out value) == false)
 	            throw new InvalidOperationException("Cannot refresh a trasient instance");
-	        var jsonDocument = documentStore.DatabaseCommands.Get(value.Key);
+			var jsonDocument = documentStore.DatabaseCommands.Get(value.Key);
             if(jsonDocument == null)
                 throw new InvalidOperationException("Document '" + value.Key + "' no longer exists and was probably deleted");
 
@@ -105,14 +109,14 @@ namespace Raven.Client.Document
 	    public override void Commit(Guid txId)
 	    {
             IncrementRequestCount();
-            documentStore.DatabaseCommands.Commit(txId);
+			documentStore.DatabaseCommands.Commit(txId);
 	        ClearEnlistment();
 	    }
 
 		public override void Rollback(Guid txId)
 	    {
             IncrementRequestCount();
-            documentStore.DatabaseCommands.Rollback(txId);
+			documentStore.DatabaseCommands.Rollback(txId);
 			ClearEnlistment();
 	    }
 
@@ -124,7 +128,6 @@ namespace Raven.Client.Document
 		public void StoreRecoveryInformation(Guid txId, byte[] recoveryInformation)
 		{
 			documentStore.DatabaseCommands.StoreRecoveryInformation(txId, recoveryInformation);
-		
 		}
 
 		public class DocumentMetadata

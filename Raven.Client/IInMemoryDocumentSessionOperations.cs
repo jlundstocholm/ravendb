@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Specialized;
 using Newtonsoft.Json.Linq;
 using Raven.Client.Document;
 
@@ -43,5 +44,6 @@ namespace Raven.Client
 	public interface IDocumentStoreListener
 	{
 		void BeforeStore(string key, object entityInstance, JObject metadata);
+		void AfterStore(string key, object entityInstance, JObject metadata);
 	}
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.Net;
 using Newtonsoft.Json.Linq;
 using Raven.Client.Indexes;
@@ -10,8 +11,10 @@ using Raven.Database.Json;
 
 namespace Raven.Client.Client
 {
-    public interface IDatabaseCommands : IDisposable
+    public interface IDatabaseCommands
 	{
+		NameValueCollection OperationsHeaders { get; set; }
+		
 		JsonDocument Get(string key);
 		PutResult Put(string key, Guid? etag, JObject document, JObject metadata);
 		void Delete(string key, Guid? etag);
@@ -38,6 +41,6 @@ namespace Raven.Client.Client
     	bool SupportsPromotableTransactions { get;  }
 
     	void DeleteByIndex(string indexName, IndexQuery queryToDelete, bool allowStale);
-		void UpdateByIndex(string indexName, IndexQuery queryToDelete, PatchRequest[] patchRequests, bool allowStale);
+		void UpdateByIndex(string indexName, IndexQuery queryToUpdate, PatchRequest[] patchRequests, bool allowStale);
 	}
 }

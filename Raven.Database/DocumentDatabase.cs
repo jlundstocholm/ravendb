@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security;
@@ -9,7 +8,6 @@ using System.Threading;
 using System.Transactions;
 using log4net;
 using Microsoft.Isam.Esent.Interop;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Raven.Database.Backup;
 using Raven.Database.Data;
@@ -20,7 +18,6 @@ using Raven.Database.Json;
 using Raven.Database.Linq;
 using Raven.Database.Plugins;
 using Raven.Database.Storage;
-using Raven.Database.Storage.StorageActions;
 using Raven.Database.Tasks;
 
 namespace Raven.Database
@@ -247,19 +244,11 @@ select new { Tag = doc[""@metadata""][""Raven-Entity-Name""] };
 					case ReadVetoResult.ReadAllow.Deny:
 						return new JsonDocument
 						{
-							DataAsJson = 
-								JObject.FromObject(new
-								{
-									Message = "The document exists, but it is hidden by a read trigger",
-									DocumentHidden = true,
-									readVetoResult.Reason
-								}),
-							Metadata = JObject.FromObject(
-								new
-								{
-									ReadVeto = true,
-									VetoingTrigger = readTrigger.ToString()
-								}
+							DataAsJson = new JObject(),
+							Metadata = new JObject(
+								new JProperty("Raven-Read-Veto", new JObject(new JProperty("Reason", readVetoResult.Reason),
+								                                             new JProperty("Trigger", readTrigger.ToString())
+								                                 	))
 								)
 						};
 					case ReadVetoResult.ReadAllow.Ignore:

@@ -12,12 +12,18 @@ namespace Raven.Database.Server.Abstractions
     public class TcpHttpResponse : IHttpResponse
     {
         private readonly TcpClient _client;
+        private readonly Func<Stream, Stream> _responseFilter;
         private readonly NameValueCollection _headers = new NameValueCollection();
         private readonly MemoryStream _outputStream = new MemoryStream();
 
-        public TcpHttpResponse(TcpClient client)
+        public TcpHttpResponse(TcpClient client) : this(client, null)
+        {
+        }
+
+        public TcpHttpResponse(TcpClient client, Func<Stream, Stream> responseFilter)
         {
             _client = client;
+            _responseFilter = responseFilter;
             StatusCode = 200;
             StatusDescription = "OK";
             ContentType = "text/text";
@@ -81,8 +87,23 @@ namespace Raven.Database.Server.Abstractions
 
         private IEnumerable<byte> GetBytes()
         {
-            var outputBytes = _outputStream.ToArray();
+
+            byte[] outputBytes;
+
+            if (_responseFilter == null)
+            {
+                outputBytes = _outputStream.ToArray();
+            }
+            else
+            {
+                using (var filteredStream = _responseFilter(_outputStream))
+                {
+                    outputBytes = new byte[filteredStream.Length];
+                    filteredStream.Read(outputBytes, 0, (int) filteredStream.Length);
+                }
+            }
             _outputStream.Close();
+
             int contentLength = outputBytes.Length;
             bool chunked = !ContentType.StartsWith("image");
 

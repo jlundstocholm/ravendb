@@ -38,7 +38,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;NET_4_0</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <NoWarn>1607</NoWarn>
@@ -120,9 +120,15 @@
     <Compile Include="Backup\RemoveBackupDocumentStartupTask.cs" />
     <Compile Include="Commercial\ValidateLicense.cs" />
     <Compile Include="Commercial\WarningMessagesHolder.cs" />
+    <Compile Include="CurrentRavenOperation.cs" />
+    <Compile Include="DatabaseBulkOperations.cs" />
     <Compile Include="Data\BackupRequest.cs" />
     <Compile Include="Data\DisposableAction.cs" />
     <Compile Include="Exceptions\IndexDoesNotExists.cs" />
+    <Compile Include="Extensions\MonoHttpEncoder.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Extensions\MonoHttpUtility.cs" />
     <Compile Include="Extensions\StreamExtension.cs" />
     <Compile Include="Extensions\IOExtensions.cs" />
     <Compile Include="Indexing\GatherAllCollector.cs" />
